@@ -1,0 +1,361 @@
+use anchor_lang::{prelude::*, system_program::Transfer};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{self, TokenInterface,Mint, TransferChecked, TokenAccount},
+};
+
+use mpl_token_metadata::{
+    accounts::Metadata
+};
+
+pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
+
+        require!(price > 0 , BuySellErrorCode::PriceNotAllowed);
+
+        let listing = &mut ctx.accounts.listing;
+
+        listing.seller = ctx.accounts.seller.key();
+        listing.mint = ctx.accounts.mint.key();
+        listing.price = price;
+
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.seller_token_account.to_account_info(),
+                to: ctx.accounts.escrow_token_account.to_account_info(),
+                authority: ctx.accounts.seller.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+            },
+        );
+
+        token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+
+        listing.status = ListingStatus::Listed;
+
+        Ok(())
+    }
+    pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
+        let listing = &mut ctx.accounts.listing;
+        let mint_key = ctx.accounts.mint.key();
+
+        require!(listing.status == ListingStatus::Listed,BuySellErrorCode::ListingNotActive);
+        require!(ctx.accounts.seller.key() == listing.seller, BuySellErrorCode::NotOriginalLister);
+
+        let signer_seeds: &[&[u8]] = 
+            &[b"listing", 
+            mint_key.as_ref(), 
+            &[ctx.bumps.listing]
+        ];
+
+        let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                from: ctx.accounts.escrow_token_account.to_account_info(),
+                to: ctx.accounts.seller_token_account.to_account_info(),
+                authority: listing.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+            },
+            signer_seeds_arr,
+        );
+
+        token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+        listing.status = ListingStatus::Cancelled;
+
+        Ok(())
+    }
+
+    pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<()> {
+
+        let listing = &mut ctx.accounts.listing;
+        let mint_key = ctx.accounts.mint.key();
+        let price = listing.price;
+
+        require!(listing.status == ListingStatus::Listed, BuySellErrorCode::ListingNotActive);
+        require!(ctx.accounts.escrow_token_account.amount == 1, BuySellErrorCode::InvalidNFTAmont);
+
+
+        let signer_seeds: &[&[u8]] = 
+            &[b"listing", 
+            mint_key.as_ref(), 
+            &[ctx.bumps.listing]
+        ];
+        let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+
+        let metadata_account = Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?; 
+        let seller_fees_points = metadata_account.seller_fee_basis_points;
+
+        let total_royalty_amount = (price as u128 * seller_fees_points as u128 / 10000) as u64;  // 0.5 
+
+        let mut account_index = 0;
+        let mut distributed_royalty = 0u64;
+        
+        let creators = metadata_account.creators;
+        
+        if let Some(creators_vec)  = creators{
+            let buyer_info = ctx.accounts.buyer.to_account_info().clone();
+            // let remaining_account = &ctx.remaining_accounts;
+            
+            for creator in creators_vec.iter() {
+                if creator.verified {
+                    let creator_share = (total_royalty_amount as u128 * creator.share as u128 / 100) as u64;
+
+                    if creator.share > 0 {
+                        if account_index < ctx.remaining_accounts.len() {
+
+                            require!(ctx.remaining_accounts[account_index].key() == creator.address,BuySellErrorCode::InvalidCreatorAccount);
+
+                            let cpi_accounts = Transfer{
+                                from:buyer_info.clone(),
+                                to:ctx.remaining_accounts[account_index].to_account_info(),
+                            };
+
+                            let cpi_program = ctx.accounts.system_program.to_account_info();
+                            let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+    
+                            anchor_lang::system_program::transfer(cpi_context, creator_share)?;
+                            distributed_royalty += creator_share;
+
+                        }
+                        account_index += 1;
+                    }else{
+                        return err!(BuySellErrorCode::InvalidCreators);
+                    }
+                }
+            } 
+        }
+
+        let seller_amount = price - total_royalty_amount;
+
+        let undistributed_royalty = total_royalty_amount - distributed_royalty;
+
+        let total_seller_amount = seller_amount + undistributed_royalty;
+
+        if total_seller_amount > 0 {
+            let cpi_account = Transfer{
+                from:ctx.accounts.buyer.to_account_info(),
+                to:ctx.accounts.seller.to_account_info()
+            };
+            let cpi_program = ctx.accounts.system_program.to_account_info();
+            let cpi_context = CpiContext::new(cpi_program, cpi_account);
+            anchor_lang::system_program::transfer(cpi_context, total_seller_amount)?;
+        }
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(), 
+            TransferChecked{
+                from:ctx.accounts.escrow_token_account.to_account_info(),
+                to:ctx.accounts.buyer_token_account.to_account_info(),
+                authority:listing.to_account_info(),
+                mint:ctx.accounts.mint.to_account_info()
+            }, 
+            signer_seeds_arr
+        );
+
+        token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+
+        listing.status = ListingStatus::Sold;
+        Ok(())
+    }
+
+    pub fn initialize_pda(_ctx: Context<InitializePda>) -> Result<()> {
+    Ok(())
+}
+
+#[derive(Accounts)]
+#[instruction()]
+pub struct InitializePda<'info> {
+    #[account(
+        init,
+        payer = signer,
+        seeds = [b"listing",mint.key().as_ref()],
+        bump,
+        space = 8 + Listing::INIT_SPACE
+    )]
+    pub pda: Account<'info, Listing>,
+
+    #[account(
+        constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
+        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    pub signer: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+#[account]
+#[derive(InitSpace)]
+pub struct Listing {
+    pub seller: Pubkey,
+    pub mint: Pubkey,
+    pub price: u64,
+    pub status: ListingStatus,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, InitSpace)]
+pub enum ListingStatus {
+    Listed,
+    Sold,
+    Cancelled,
+}
+
+
+#[derive(Accounts)]
+pub struct BuyNft<'info> {
+    #[account(mut)]
+    pub seller: Signer<'info>,
+
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"listing", mint.key().as_ref()],
+        bump,
+    )]
+    pub listing: Account<'info, Listing>,
+
+    /// CHECK
+    #[account(
+            mut,
+            seeds = [b"metadata", mpl_token_metadata::ID.as_ref(),mint.key().as_ref()],
+            bump,
+            seeds::program=mpl_token_metadata::ID
+        )]
+    pub metadata_account: UncheckedAccount<'info>,
+
+
+    #[account(
+        constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
+        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = buyer,
+    )]
+    pub buyer_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = listing,
+    )]
+    pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    
+}
+
+#[derive(Accounts)]
+pub struct CreateListing<'info> {
+    #[account(mut)]
+    pub seller: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"listing", mint.key().as_ref()],
+        bump,
+    )]
+    pub listing: Account<'info, Listing>,
+
+    #[account(
+        constraint = mint.decimals == 0  @ BuySellErrorCode::InvalidDecimals,
+        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = seller,
+        constraint = seller_token_account.amount == 1 @ BuySellErrorCode::InvalidAmount,
+    )]
+    pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = listing,
+    )]
+    pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CloseListing<'info> {
+    #[account(mut)]
+    pub seller: Signer<'info>,
+
+    #[account(
+        mut,
+        close = seller,
+        seeds = [b"listing", mint.key().as_ref()],
+        bump,
+    )]
+    pub listing: Account<'info, Listing>,
+
+    #[account(
+        constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
+        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = seller,
+    )]
+    pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = listing,
+    )]
+    pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[error_code]
+pub enum BuySellErrorCode {
+    #[msg("Creator account does not match metadata")]
+    InvalidCreatorAccount,
+
+    #[msg("fungible token")]
+    InvalidDecimals,
+
+    #[msg("Mint account is not valid nft")]
+    InvalidMint,
+
+    #[msg("insufficient balance")]
+    InvalidAmount,
+
+    #[msg("missing creator account")]
+    InvalidCreators,
+
+    #[msg("listing is not active")]
+    ListingNotActive,
+
+    #[msg("price not allowed")]
+    PriceNotAllowed,
+
+    #[msg("not original lister")]
+    NotOriginalLister,
+
+    #[msg("escrow has no nft")]
+    InvalidNFTAmont
+}
