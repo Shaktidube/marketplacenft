@@ -86,6 +86,7 @@ pub enum MintErrorCode {
 
 pub fn create_mint(_ctx: Context<MintAccount>) -> Result<()> {
     Ok(())
+
 }
 
 pub fn mint_to(_ctx: Context<MintTokesTo>, _amount: u64) -> Result<()> {
@@ -115,7 +116,7 @@ pub fn mint_to_nft(_ctx: Context<NftMintTo>) -> Result<()> {
 
     require!(_ctx.accounts.mint.mint_authority == COption::Some(_ctx.accounts.signer.key()), MintErrorCode::InvalidMintAuthority);
 
-    SystemTime::now();
+    // SystemTime::now();
 
     require!(_ctx.accounts.token_account.owner == _ctx.accounts.signer.key(), MintErrorCode::InvalidTokenAccountOwner);
     

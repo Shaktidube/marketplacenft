@@ -5,14 +5,13 @@ pub mod instructions;
 use instructions::buysell::*;
 use instructions::metadata::*;
 use instructions::mint::*;
-use instructions::Auction::*;
-
+use instructions::auction::*;
 declare_id!("9U1c1CFEyEgEjbrxFcbAymjb4sf8VjiYhm4rYD8Zzszf");
 
 #[program]
 pub mod marketplacenft {
 
-    use crate::instructions::{buysell, metadata, mint};
+    use crate::instructions::{auction, buysell, metadata, mint};
 
     use super::*;
 
@@ -67,16 +66,28 @@ pub mod marketplacenft {
         buysell::cancel_listing(ctx)?;
         Ok(())
     }
+    pub fn create_auction(ctx:Context<StartAuction>,start_time:i64, bid_start_from:u64, duration:i64) -> Result<()> {
+        auction::create_auction(ctx, start_time, bid_start_from, duration)
+    }
 
-    // pub fun create_auction(ctx:Context<Auction>) -> Result<()>{
-
-    // }
+    pub fn place_bid(ctx:Context<PlaceBid>,bid_amount : u64) -> Result<()> {
+        auction::place_bid(ctx, bid_amount);
+        Ok(())
+    }
 
     pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<()> {
         buysell::buy_nft(ctx)?;
         Ok(())
     }
 
+    pub fn initialize_auction_pda(_ctx: Context<InitializeAuctionPda>) -> Result<()> {
+        auction::initialize_auction_pda(_ctx)?;
+        Ok(())
+    }
+    pub fn initialize_bid_pda(_ctx: Context<InitializeBidPda>) -> Result<()> {
+        auction::initialize_bid_pda(_ctx)?;
+        Ok(())
+    }
     pub fn initialize_pda(_ctx: Context<InitializePda>) -> Result<()> {
         buysell::initialize_pda(_ctx)?;
         Ok(())
