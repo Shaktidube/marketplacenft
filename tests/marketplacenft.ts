@@ -762,12 +762,12 @@ describe("create token account", () => {
     console.log(".........")
 
     const currentBlockTimeStamp = (await provider.connection.getBlockTime(await provider.connection.getSlot())) || Math.floor(Date.now() / 1000);
-    const startTime =new anchor.BN(1751029031);
+    const startTime =new anchor.BN(1751283214);
     console.log("start time : ",startTime.toString());
 
-    const initialPrice = new anchor.BN(1_000_000_000);
+    const initialPrice = new anchor.BN(100000000);
 
-    const duration = new anchor.BN(100);
+    const duration = new anchor.BN(1000);
     console.log("auction duration : ", duration);
 
     const EndTime = startTime.add(duration);
@@ -791,7 +791,7 @@ describe("create token account", () => {
     console.log("Auction initial price",);
   })
 
-  it("make bid first bid" , async () => {
+  it("first bid" , async () => {
     // const mintNFTPublickey  = new PublicKey("E5v3MXzBQryyQEfhAxyVkMEVtt2swXADxGmQkYRXQ86B");
 
     const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
@@ -805,10 +805,12 @@ describe("create token account", () => {
     const tx = new Transaction();
 
     const [bidPda] = await PublicKey.findProgramAddress(
-      [Buffer.from("bid"), mintNFTKeypair.publicKey.toBuffer(),buyerKeypair.publicKey.toBuffer()],
+      [Buffer.from("bid"), mintNFTKeypair.publicKey.toBuffer()],
       program.programId
     );
     console.log("bid_pda : " , bidPda.toBase58());
+
+
     const [auctionPda] = await PublicKey.findProgramAddress(
       [Buffer.from("auction"), mintNFTKeypair.publicKey.toBuffer()],
       program.programId
@@ -851,170 +853,157 @@ describe("create token account", () => {
     }
     console.log("......");
 
-    const makeBid = await program.methods.placeBid( new anchor.BN(1_00_000_000)).accounts({
+    // const auctionAcc = await program.account.auction.fetch(auctionPda);
+    // const prevHighestBidder = auctionAcc.highestBidder as PublicKey; 
+    // console.log("previous highest bidder : ", prevHighestBidder);
+
+    // const [prevBidPda] = PublicKey.findProgramAddressSync(
+    //   [Buffer.from("prevBid"), mintNFTKeypair.publicKey.toBuffer(), prevHighestBidder.toBuffer()],
+    //   program.programId
+    // );
+
+
+    const auctionAcc = await program.account.auction.fetch(auctionPda);
+    console.log(auctionAcc.highestBidder);
+
+    const prevHighestBidder = auctionAcc.highestBidder;
+
+    const remainingAccounts = [
+      { pubkey: prevHighestBidder, isWritable: true, isSigner: false }
+    ];
+
+    const makeBid = await program.methods.placeBid( new anchor.BN(200000000)).accounts({
+      bidder:buyerKeypair.publicKey,
+      bidPda:bidPda,
+      auction:auctionPda,
+      nftMint:mintNFTKeypair.publicKey,
+      clock:anchor.web3.SYSVAR_CLOCK_PUBKEY,
+      // prevHighestBidder:prevHighestBidder,
+      // prevHighestBid:prevBidPda,
+      systemProgram: anchor.web3.SystemProgram.programId,
+    }).remainingAccounts(remainingAccounts).instruction()
+
+    tx.add(makeBid);
+    await provider.sendAndConfirm(tx,[buyerKeypair]);
+
+    const bidPdaBalance = await connection.getBalance(bidPda);
+    console.log("bid_pda Balance:", bidPdaBalance , "SOL");
+
+    console.log("✅ First Bid Accepted");
+  })
+  //   const Firstprivatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
+  it("second bid" , async () => {
+    // const mintNFTPublickey  = new PublicKey("E5v3MXzBQryyQEfhAxyVkMEVtt2swXADxGmQkYRXQ86B");
+
+    const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
+
+    const signerKeypair = umi.eddsa.createKeypairFromSecretKey(new Uint8Array(privatekey));
+
+    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+
+    const buyerPublickey = signerKeypair.publicKey;
+
+    const tx = new Transaction();
+
+    const [bidPda] = await PublicKey.findProgramAddress(
+      [Buffer.from("bid"), mintNFTKeypair.publicKey.toBuffer()],
+      program.programId
+    );
+    console.log("bid_pda : " , bidPda.toBase58());
+
+
+    const [auctionPda] = await PublicKey.findProgramAddress(
+      [Buffer.from("auction"), mintNFTKeypair.publicKey.toBuffer()],
+      program.programId
+    );
+
+    console.log("auction pda : ", auctionPda);
+    console.log("bid pda : ", bidPda);
+
+    const bidPdaBalance = await connection.getBalance(bidPda);
+    console.log("bid_pda Balance:", bidPdaBalance , "SOL");
+
+    const accountInfo = await connection.getAccountInfo(bidPda);
+    console.log("accountInfo", accountInfo);
+
+    if (accountInfo === null) {
+      console.log("null");
+      const createPda = await program.methods.initializeBidPda().accounts({
+        bidder: buyerKeypair.publicKey,
+        nftMint: mintNFTKeypair.publicKey,
+        bidPda:bidPda,
+        systemProgram:anchor.web3.SystemProgram.programId,
+      }).instruction();
+      console.log("initializePda");
+      tx.add(createPda);
+
+      console.log("pda is created")
+    }
+
+    const escrowAta = await getAssociatedTokenAddress(
+      mintNFTKeypair.publicKey,
+      bidPda,
+      true,
+    );
+    console.log("escrow ata", escrowAta)
+
+    const escrowAccountinfo = await connection.getAccountInfo(escrowAta);
+
+    if (escrowAccountinfo === null) {
+      const createBidAta = createAssociatedTokenAccountInstruction(
+        buyerKeypair.publicKey,
+        escrowAta,
+        bidPda,
+        mintNFTKeypair.publicKey
+      )
+      tx.add(createBidAta);
+    }
+    console.log("......");
+
+    // const auctionAcc = await program.account.auction.fetch(auctionPda);
+    // const prevHighestBidder = auctionAcc.highestBidder as PublicKey; 
+    // console.log("previous highest bidder : ", prevHighestBidder);
+
+    // const [prevBidPda] = PublicKey.findProgramAddressSync(
+    //   [Buffer.from("prevBid"), mintNFTKeypair.publicKey.toBuffer(), prevHighestBidder.toBuffer()],
+    //   program.programId
+    // );
+
+
+    const auctionAcc = await program.account.auction.fetch(auctionPda);
+    console.log("highestBidder : ",auctionAcc.highestBidder);
+
+    const prevHighestBidder = auctionAcc.highestBidder;
+
+    const remainingAccounts = [
+      { pubkey: prevHighestBidder, isWritable: true, isSigner: false }
+    ];
+
+    const makeBid = await program.methods.placeBid( new anchor.BN(1_000_000_000)).accounts({
       bidder:buyerKeypair.publicKey,
       bidPda:bidPda,
       auction:auctionPda,
       nftMint:mintNFTKeypair.publicKey,
       clock:anchor.web3.SYSVAR_CLOCK_PUBKEY,
       systemProgram: anchor.web3.SystemProgram.programId,
-    }).instruction()
+    }).remainingAccounts(remainingAccounts).instruction()
 
     tx.add(makeBid);
     await provider.sendAndConfirm(tx,[buyerKeypair]);
 
-    const buyerBalance = await connection.getBalance(buyerKeypair.publicKey);
-    console.log("Buyer Balance:", buyerBalance , "SOL");
+    // const bidPdaBalance = await connection.getBalance(bidPda);
+    // console.log("bid_pda Balance:", bidPdaBalance , "SOL");
 
-    const bidPdaBalance = await connection.getBalance(bidPda);
-    console.log("bid_pda Balance:", bidPdaBalance , "SOL");
-
-    console.log("✅ Bid Accepted");
+    console.log("✅ second Bid Accepted");
   })
-  // it("make bid first bid" , async () => {
-  //   // const mintNFTPublickey  = new PublicKey("E5v3MXzBQryyQEfhAxyVkMEVtt2swXADxGmQkYRXQ86B");
 
-  //   const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
-
-  //   const signerKeypair = umi.eddsa.createKeypairFromSecretKey(new Uint8Array(privatekey));
-
-  //   const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
-
-  //   const buyerPublickey = signerKeypair.publicKey;
-
-  //   const tx = new Transaction();
-
-  //   const [bidPda] = await PublicKey.findProgramAddress(
-  //     [Buffer.from("bid"), mintNFTKeypair.publicKey.toBuffer(),buyerKeypair.publicKey.toBuffer()],
-  //     program.programId
-  //   );
-  //   console.log("bid_pda : " , bidPda.toBase58());
-  //   const [auctionPda] = await PublicKey.findProgramAddress(
-  //     [Buffer.from("auction"), mintNFTKeypair.publicKey.toBuffer()],
-  //     program.programId
-  //   );
-
-  //   const accountInfo = await connection.getAccountInfo(bidPda);
-  //   console.log("asdf", accountInfo);
-
-  //   if (accountInfo === null) {
-  //     console.log("null");
-  //     const createPda = await program.methods.initializeBidPda().accounts({
-  //       bidder: buyerKeypair.publicKey,
-  //       nftMint: mintNFTKeypair.publicKey,
-  //       bidPda:bidPda,
-  //       systemProgram:anchor.web3.SystemProgram.programId,
-  //     }).instruction();
-  //     console.log("initializePda");
-  //     tx.add(createPda);
-
-  //     console.log("pda is created")
-  //   }
-
-  //   const escrowAta = await getAssociatedTokenAddress(
-  //     mintNFTKeypair.publicKey,
-  //     bidPda,
-  //     true,
-  //   );
-  //   console.log("escrow ata", escrowAta)
-
-  //   const escrowAccountinfo = await connection.getAccountInfo(escrowAta);
-
-  //   if (escrowAccountinfo === null) {
-  //     const createBidAta = createAssociatedTokenAccountInstruction(
-  //       wallet.publicKey,
-  //       escrowAta,
-  //       bidPda,
-  //       mintNFTKeypair.publicKey
-  //     )
-  //     tx.add(createBidAta);
-  //   }
-  //   console.log("......");
-
-  //   const makeBid = await program.methods.placeBid( new anchor.BN(1_00_000_000)).accounts({
-  //     bidder:buyerKeypair.publicKey,
-  //     bidPda:bidPda,
-  //     auction:auctionPda,
-  //     nftMint:mintNFTKeypair.publicKey,
-  //     clock:anchor.web3.SYSVAR_CLOCK_PUBKEY,
-  //     systemProgram: anchor.web3.SystemProgram.programId,
-  //   }).instruction()
-
-  //   tx.add(makeBid);
-  //   await provider.sendAndConfirm(tx,[buyerKeypair]);
-
-  //   const buyerBalance = await connection.getBalance(buyerKeypair.publicKey);
-  //   console.log("Buyer Balance:", buyerBalance , "SOL");
-
-  //   const bidPdaBalance = await connection.getBalance(bidPda);
-  //   console.log("bid_pda Balance:", bidPdaBalance , "SOL");
-
-  //   console.log("✅ Bid Accepted");
-  // })
-
-  // it.only('cancel listing', async () => {
-
-  //   const mintNFTKeypair = new PublicKey("4y74sEZtkqop4ph5EgAUBr2CDKdS1AfzHZEv7wH4PJZd");
-
-  //   const [listingPda] = await PublicKey.findProgramAddress(
-  //     [Buffer.from("listing"), mintNFTKeypair.toBuffer()],
-  //     program.programId
-  //   );
-
-  //   const [escrowAtaPda, escrowBump] = await PublicKey.findProgramAddress(
-  //     [
-  //       Buffer.from("escrow"),
-  //       listingPda.toBuffer(),
-  //      mintNFTKeypair.toBuffer(),
-  //     ],
-  //     program.programId
-  //   );
-
-  //   const escrowAta = await getAssociatedTokenAddress(
-  //     mintNFTKeypair,
-  //     listingPda,
-  //     true,
-  //   );
-
-  //   const sellerAta = await getAssociatedTokenAddress(
-  //     mintNFTKeypair,
-  //     wallet.publicKey
-  //   )
-
-
-  //   const cancelListingTx = await program.methods.cancelListing().accounts({
-  //     seller: wallet.publicKey,
-  //     mint: mintNFTKeypair,
-  //     tokenProgram: TOKEN_PROGRAM_ID,
-  //   }).instruction();
-
-
-  //   const tx = new Transaction().add(cancelListingTx);
-  //   const sig = await provider.sendAndConfirm(tx, []);
-
-  //   console.log("✅ Cancelled listing. Tx:");
-
-  //   const listingAccount = await connection.getAccountInfo(listingPda);
-  //   if (listingAccount === null) {
-  //     console.log("✅ Listing PDA is closed");
-  //   } else {
-  //     console.log("❌ Listing PDA still exists");
-  //   }
-
-  //   const sellerAccountInfo = await getAccount(connection, sellerAta);
-  //   const escroeAccountInfo = await getAccount(connection, escrowAta);
-
-  //   console.log("seller account nft amount", sellerAccountInfo.amount);
-  //   console.log("escrow account nft amount", escroeAccountInfo.amount);
-
-  // });
-
-
+  
   it('verify collection', async () => {
 
     const mintNFTPublickey = new PublicKey("4y74sEZtkqop4ph5EgAUBr2CDKdS1AfzHZEv7wH4PJZd");
     const mintColletionPublickey = new PublicKey("FA2bEXcZNEQTY4GkfbrRf9XwvgGmZkCs3pFx3Tvj5hWZ");
 
+  
     const provider = anchor.AnchorProvider.env();
     anchor.setProvider(provider);
 

@@ -65,7 +65,7 @@ pub struct InitializeBidPda<'info> {
     #[account(
         init,
         payer = bidder,
-        seeds = [b"bid",nft_mint.key().as_ref(),bidder.key().as_ref()],
+        seeds = [b"bid",nft_mint.key().as_ref()],
         bump,
         space = 8 + Bid::INIT_SPACE
     )]
@@ -101,6 +101,8 @@ pub struct StartAuction<'info>{
 
     #[account(
         mut,
+        // init,
+        // payer = seller,
         associated_token::mint = nft_mint,
         associated_token::authority = seller,
         constraint = seller_token_account.amount == 1 @ BuySellErrorCode::InvalidAmount,
@@ -109,6 +111,8 @@ pub struct StartAuction<'info>{
 
     #[account(
         mut,
+        // init,
+        // payer = seller,
         associated_token::mint = nft_mint,
         associated_token::authority = auction,
     )]
@@ -127,7 +131,7 @@ pub struct PlaceBid<'info>{
     
     #[account(
         mut,
-        seeds = [b"bid",nft_mint.key().as_ref(),bidder.key().as_ref()],
+        seeds = [b"bid",nft_mint.key().as_ref()],
         bump
     )]
     pub bid_pda :Account<'info,Bid>,
@@ -211,13 +215,13 @@ pub fn create_auction(ctx:Context<StartAuction>,start_time:i64,bid_start_from:u6
     auction.auction_status = AuctionStatus::Active;
     auction.seller = ctx.accounts.seller.key();
     auction.current_bid = 0;
-    auction.highest_bidder = Pubkey::default();
+    auction.highest_bidder = Pubkey::default(); 
     auction.nft_mint = ctx.accounts.nft_mint.key();
 
     Ok(())
 }
 
-pub fn place_bid(ctx:Context<PlaceBid>,bid_amount:u64) -> Result<()>{
+pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amount:u64) -> Result<()>{
 
     let auciton = &mut ctx.accounts.auction;
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
@@ -225,38 +229,67 @@ pub fn place_bid(ctx:Context<PlaceBid>,bid_amount:u64) -> Result<()>{
 
     // let prev_highest_bidder = auciton.highest_bidder;
     // let prev_highest_bid = auciton.current_bid;
+    require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
+    require!(bid_amount >= auciton.current_bid , AuctionErrorCode::BidNotValid);
 
     if auciton.current_bid == 0 {
         // intilize bid
-        require!(current_timestamp <= auciton.end_time && current_timestamp >= auciton.start_time, AuctionErrorCode::AuctionTimeOver);
+        require!(current_timestamp >= auciton.start_time, AuctionErrorCode::AuctionTimeOver);
         require!(bid_amount >= auciton.satrt_price , AuctionErrorCode::BidNotValid );
-
-        bid_account.auction_pda = auciton.key();
-        bid_account.amount = bid_amount;
-        bid_account.bidder = ctx.accounts.bidder.key();
     } else {
         // handle 2nd bid 
+        let mint_nft: Pubkey = ctx.accounts.nft_mint.key();
+
+        let remaining = &ctx.remaining_accounts;
+        // require!(remaining.len() == 1, AuctionErrorCode::MissingRemainingAccounts);
+
+        let prev_highest_bidder = &remaining[0]; 
+        // let prev_highest_bidder = bid_account.bidder;
+
         require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
-        require!(ctx.accounts.bidder.key() != auciton.highest_bidder , AuctionErrorCode::CurrentBidderIsNotValid);
+        // require!(ctx.accounts.bidder.key() != auciton.highest_bidder , AuctionErrorCode::CurrentBidderIsNotValid);
         require!( bid_amount > auciton.current_bid , AuctionErrorCode::CurrentBisIsNotValid );
-        
+
+        // require!(auciton.highest_bidder == ctx.accounts.prev_highest_bidder.key(), AuctionErrorCode::PreviousBidderMismatch);
+        let bid_pda_seeds = &[
+                b"bid",
+                mint_nft.as_ref(),
+                &[ctx.bumps.bid_pda],
+            ];
+            let signer_seeds_arr: &[&[&[u8]]] = &[bid_pda_seeds];
         // refund prev bidder 
         let cpi_accounts = Transfer{
             from:bid_account.to_account_info(),
-            to:ctx.accounts.bidder.to_account_info(),
+            to:prev_highest_bidder.to_account_info(),
         };
 
+        // transfer new bid to bid pda
         let cpi_program = ctx.accounts.system_program.to_account_info();
 
-        let cpi_context = CpiContext :: new(cpi_program, cpi_accounts);
+        let cpi_context = CpiContext :: new_with_signer(cpi_program, cpi_accounts,signer_seeds_arr);
 
         anchor_lang::system_program::transfer(cpi_context, auciton.current_bid)?;
+
+        // let signer_seeds: &[&[u8]] = &[b"bid", mint_nft.as_ref(), &[ctx.bumps.bid_pda]];
+        // let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+
+
+        // let refund_ix = anchor_lang::system_program::Transfer {
+        //     from: bid_account.to_account_info(),
+        //     to: prev_highest_bidder.clone(),
+        // };
+        // let cpi_ctx = CpiContext::new_with_signer(
+        //     ctx.accounts.system_program.to_account_info(),
+        //     refund_ix,
+        //     signer_seeds_arr,
+        // );
+        // anchor_lang::system_program::transfer(cpi_ctx, auciton.current_bid)?;
 
         bid_account.auction_pda = auciton.key();
         bid_account.amount = bid_amount;
         bid_account.bidder = ctx.accounts.bidder.key();
     }
-
+    
     // transfer new bid to bid pda
     let cpi_accounts = Transfer{
         from:ctx.accounts.bidder.to_account_info(),
@@ -335,6 +368,9 @@ pub enum AuctionErrorCode {
     PreviousBidderIsNotVAlid,
 
     #[msg("auction is over")]
-    AuctionTimeOver
+    AuctionTimeOver,
+
+    #[msg("previous bidder mismatch")]
+    PreviousBidderMismatch,
     
 }

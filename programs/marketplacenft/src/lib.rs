@@ -70,8 +70,8 @@ pub mod marketplacenft {
         auction::create_auction(ctx, start_time, bid_start_from, duration)
     }
 
-    pub fn place_bid(ctx:Context<PlaceBid>,bid_amount : u64) -> Result<()> {
-        auction::place_bid(ctx, bid_amount);
+    pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amount : u64) -> Result<()> {
+        auction::place_bid(ctx, bid_amount)?;
         Ok(())
     }
 
