@@ -762,7 +762,7 @@ describe("create token account", () => {
     console.log(".........")
 
     const currentBlockTimeStamp = (await provider.connection.getBlockTime(await provider.connection.getSlot())) || Math.floor(Date.now() / 1000);
-    const startTime =new anchor.BN(1751283214);
+    const startTime =new anchor.BN(1751375255);
     console.log("start time : ",startTime.toString());
 
     const initialPrice = new anchor.BN(100000000);
@@ -815,7 +815,6 @@ describe("create token account", () => {
       [Buffer.from("auction"), mintNFTKeypair.publicKey.toBuffer()],
       program.programId
     );
-
     const accountInfo = await connection.getAccountInfo(bidPda);
     console.log("asdf", accountInfo);
 
@@ -930,7 +929,7 @@ describe("create token account", () => {
       console.log("null");
       const createPda = await program.methods.initializeBidPda().accounts({
         bidder: buyerKeypair.publicKey,
-        nftMint: mintNFTKeypair.publicKey,
+        nftMint:mintNFTKeypair.publicKey,
         bidPda:bidPda,
         systemProgram:anchor.web3.SystemProgram.programId,
       }).instruction();

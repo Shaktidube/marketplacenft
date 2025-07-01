@@ -1,4 +1,4 @@
-use anchor_lang::{accounts, prelude::*, system_program::Transfer};
+use anchor_lang::{ prelude::*, system_program::{transfer, Transfer}};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
@@ -227,8 +227,6 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
     let bid_account = &mut ctx.accounts.bid_pda;
 
-    // let prev_highest_bidder = auciton.highest_bidder;
-    // let prev_highest_bid = auciton.current_bid;
     require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
     require!(bid_amount >= auciton.current_bid , AuctionErrorCode::BidNotValid);
 
@@ -244,7 +242,6 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
         // require!(remaining.len() == 1, AuctionErrorCode::MissingRemainingAccounts);
 
         let prev_highest_bidder = &remaining[0]; 
-        // let prev_highest_bidder = bid_account.bidder;
 
         require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
         // require!(ctx.accounts.bidder.key() != auciton.highest_bidder , AuctionErrorCode::CurrentBidderIsNotValid);
@@ -255,35 +252,24 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
                 b"bid",
                 mint_nft.as_ref(),
                 &[ctx.bumps.bid_pda],
-            ];
-            let signer_seeds_arr: &[&[&[u8]]] = &[bid_pda_seeds];
-        // refund prev bidder 
-        let cpi_accounts = Transfer{
-            from:bid_account.to_account_info(),
-            to:prev_highest_bidder.to_account_info(),
-        };
+        ];
+        let signer_seeds_arr: &[&[&[u8]]] = &[bid_pda_seeds];
 
-        // transfer new bid to bid pda
-        let cpi_program = ctx.accounts.system_program.to_account_info();
+        let ix = solana_program::system_instruction::transfer(
+            &bid_account.key(),
+            &prev_highest_bidder.key(),
+            auciton.current_bid,
+        );
 
-        let cpi_context = CpiContext :: new_with_signer(cpi_program, cpi_accounts,signer_seeds_arr);
-
-        anchor_lang::system_program::transfer(cpi_context, auciton.current_bid)?;
-
-        // let signer_seeds: &[&[u8]] = &[b"bid", mint_nft.as_ref(), &[ctx.bumps.bid_pda]];
-        // let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
-
-
-        // let refund_ix = anchor_lang::system_program::Transfer {
-        //     from: bid_account.to_account_info(),
-        //     to: prev_highest_bidder.clone(),
-        // };
-        // let cpi_ctx = CpiContext::new_with_signer(
-        //     ctx.accounts.system_program.to_account_info(),
-        //     refund_ix,
-        //     signer_seeds_arr,
-        // );
-        // anchor_lang::system_program::transfer(cpi_ctx, auciton.current_bid)?;
+        solana_program::program::invoke_signed(
+            &ix,
+            &[
+                bid_account.to_account_info(),
+                prev_highest_bidder.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds_arr,
+        )?;
 
         bid_account.auction_pda = auciton.key();
         bid_account.amount = bid_amount;
@@ -344,6 +330,7 @@ pub fn cancel_auction(ctx:Context<CancelAuction>) ->Result<()> {
 pub fn initialize_auction_pda(_ctx: Context<InitializeAuctionPda>) -> Result<()> {
     Ok(())
 }
+
 pub fn initialize_bid_pda(_ctx: Context<InitializeBidPda>) -> Result<()> {
     Ok(())
 }
