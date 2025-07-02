@@ -75,6 +75,15 @@ pub mod marketplacenft {
         Ok(())
     }
 
+    pub fn cancel_auction(ctx:Context<CancelAuction>) -> Result<()>{
+        auction::cancel_auction(ctx)?;
+        Ok(())
+    }
+    pub fn winner_nft<'info>(ctx:Context<'_, '_, '_, 'info,WinnerNft<'info>>) -> Result<()>{
+        auction::winner_nft(ctx)?;
+        Ok(())
+    }
+    
     pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<()> {
         buysell::buy_nft(ctx)?;
         Ok(())

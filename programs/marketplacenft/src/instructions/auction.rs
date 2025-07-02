@@ -1,9 +1,9 @@
 use anchor_lang::{ prelude::*, system_program::{transfer, Transfer}};
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
+    token_interface::{self, spl_pod::option::Nullable, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
-
+use mpl_token_metadata::accounts::Metadata;
 use crate::{ BuySellErrorCode};
 
 #[account]
@@ -24,7 +24,8 @@ pub enum AuctionStatus{
     Created,
     Ended,
     Active,
-    Cancelled
+    Cancelled,
+    Settled
 }
 
 #[account]
@@ -34,6 +35,8 @@ pub struct Bid {
     pub bidder:Pubkey,
     pub amount : u64,
 }
+#[account]
+pub struct Escrow;
 
 #[derive(Accounts)]
 #[instruction()]
@@ -60,16 +63,17 @@ pub struct InitializeAuctionPda<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction()]
 pub struct InitializeBidPda<'info> {
     #[account(
         init,
         payer = bidder,
-        seeds = [b"bid",nft_mint.key().as_ref()],
+        seeds = [b"escrow",nft_mint.key().as_ref()],
         bump,
-        space = 8 + Bid::INIT_SPACE
+        space = 0,
+        owner= anchor_lang::system_program::ID
     )]
-    pub bid_pda: Account<'info, Bid>,
+    /// CHECK : this account hold only sol
+    pub bid_pda: UncheckedAccount<'info>,
 
     #[account(mut)]
     pub nft_mint: InterfaceAccount<'info, Mint>,
@@ -117,8 +121,6 @@ pub struct StartAuction<'info>{
         associated_token::authority = auction,
     )]
     pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
-
-
     pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -131,10 +133,11 @@ pub struct PlaceBid<'info>{
     
     #[account(
         mut,
-        seeds = [b"bid",nft_mint.key().as_ref()],
+        seeds = [b"escrow",nft_mint.key().as_ref()],
         bump
     )]
-    pub bid_pda :Account<'info,Bid>,
+    /// CHECK : this account hold only sol
+    pub bid_pda: UncheckedAccount<'info>,
     
     #[account(
         mut,
@@ -167,6 +170,13 @@ pub struct CancelAuction<'info>{
     pub auction: Account<'info, Auction>,
 
     #[account(
+        mut,
+        seeds = [b"escrow", mint.key().as_ref()],
+        bump,
+    )]
+    pub bid_pda: Account<'info, Escrow>,
+
+    #[account(
         constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
         constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint,
     )]
@@ -185,6 +195,68 @@ pub struct CancelAuction<'info>{
         associated_token::authority = auction,
     )]
     pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    pub clock : Sysvar<'info,Clock>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct WinnerNft<'info> {
+    #[account(mut)]
+    pub seller: Signer<'info>,
+
+    #[account(mut)]
+    pub bidder: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"auction", mint.key().as_ref()],
+        bump,
+    )]
+    pub auction: Account<'info, Auction>,
+
+    #[account(
+        mut,
+        seeds = [b"escrow",mint.key().as_ref()],
+        bump,
+        owner = anchor_lang::system_program::ID
+    )]
+    /// CHECK : this account hold only sol
+    pub bid_pda: UncheckedAccount<'info>,
+
+    /// CHECK
+    #[account(
+            mut,
+            seeds = [b"metadata", mpl_token_metadata::ID.as_ref(),mint.key().as_ref()],
+            bump,
+            seeds::program=mpl_token_metadata::ID
+        )]
+    pub metadata_account: UncheckedAccount<'info>,
+
+    #[account(
+        constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
+        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = bidder,
+    )]
+    pub buyer_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = auction,
+    )]
+    pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    pub clock : Sysvar<'info,Clock>,
 
     pub token_program: Interface<'info, TokenInterface>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -207,7 +279,7 @@ pub fn create_auction(ctx:Context<StartAuction>,start_time:i64,bid_start_from:u6
             },
         );
 
-        token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.nft_mint.decimals)?;
+    token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.nft_mint.decimals)?;
 
     auction.start_time = start_time;
     auction.end_time = auction_end_time;
@@ -226,9 +298,20 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
     let auciton = &mut ctx.accounts.auction;
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
     let bid_account = &mut ctx.accounts.bid_pda;
-
+ 
     require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
+    require!(current_timestamp >= auciton.start_time , AuctionErrorCode::AuctionIsNotStarted);
     require!(bid_amount >= auciton.current_bid , AuctionErrorCode::BidNotValid);
+    require!(
+        ctx.accounts.bidder.owner == &solana_program::system_program::ID,
+        AuctionErrorCode::InvalidBidderAccount
+    );
+    require!(
+        ctx.accounts.bidder.lamports() >= bid_amount,
+        AuctionErrorCode::InsufficientBalance
+    );
+
+    require!(ctx.accounts.bidder.key() != auciton.highest_bidder, AuctionErrorCode::CurrentBidderIsNotValid);
 
     if auciton.current_bid == 0 {
         // intilize bid
@@ -238,18 +321,15 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
         // handle 2nd bid 
         let mint_nft: Pubkey = ctx.accounts.nft_mint.key();
 
-        let remaining = &ctx.remaining_accounts;
-        // require!(remaining.len() == 1, AuctionErrorCode::MissingRemainingAccounts);
+        let remaining: &&[AccountInfo<'info>] = &ctx.remaining_accounts;
 
         let prev_highest_bidder = &remaining[0]; 
 
         require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
-        // require!(ctx.accounts.bidder.key() != auciton.highest_bidder , AuctionErrorCode::CurrentBidderIsNotValid);
         require!( bid_amount > auciton.current_bid , AuctionErrorCode::CurrentBisIsNotValid );
 
-        // require!(auciton.highest_bidder == ctx.accounts.prev_highest_bidder.key(), AuctionErrorCode::PreviousBidderMismatch);
         let bid_pda_seeds = &[
-                b"bid",
+                b"escrow",
                 mint_nft.as_ref(),
                 &[ctx.bumps.bid_pda],
         ];
@@ -270,10 +350,6 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
             ],
             signer_seeds_arr,
         )?;
-
-        bid_account.auction_pda = auciton.key();
-        bid_account.amount = bid_amount;
-        bid_account.bidder = ctx.accounts.bidder.key();
     }
     
     // transfer new bid to bid pda
@@ -295,12 +371,17 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
     Ok(())
 }
 
-pub fn cancel_auction(ctx:Context<CancelAuction>) ->Result<()> {
+pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     let auction =&mut ctx.accounts.auction;
     let mint_key = ctx.accounts.mint.key();
+    // let bid_pda = &ctx.accounts.bid_pda;
+    let current_timestamp =  ctx.accounts.clock.unix_timestamp;
+
+    require!(current_timestamp >= auction.end_time ,AuctionErrorCode::AuctionIsActive);
 
     require!(auction.auction_status == AuctionStatus::Active, AuctionErrorCode::AuctionIsNotactive);
     require!(ctx.accounts.seller.key() == auction.seller, AuctionErrorCode::NotOriginalLister);
+    require!(auction.highest_bidder.is_none(),AuctionErrorCode::IllegalCancelAuction);
 
     let signer_seeds = 
             &[b"auction", 
@@ -310,20 +391,123 @@ pub fn cancel_auction(ctx:Context<CancelAuction>) ->Result<()> {
     let signer_seeds_arr= &[&signer_seeds[..]];
     
     let cpi_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            TransferChecked {
-                from: ctx.accounts.escrow_token_account.to_account_info(),
-                to: ctx.accounts.seller_token_account.to_account_info(),
-                authority: auction.to_account_info(),
-                mint: ctx.accounts.mint.to_account_info(),
-            },
-            signer_seeds_arr,
-        );
-
-        token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+        ctx.accounts.token_program.to_account_info(),
+        TransferChecked {
+            from: ctx.accounts.escrow_token_account.to_account_info(),
+            to: ctx.accounts.seller_token_account.to_account_info(),
+            authority: auction.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
+        },
+        signer_seeds_arr,
+    );
+    token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
     auction.auction_status = AuctionStatus::Cancelled;
 
+    Ok(())
+}
+
+
+pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> Result<()> {
+    let auction_acc = &mut ctx.accounts.auction;
+    let mint_key = ctx.accounts.mint.key();
+    let price = auction_acc.current_bid;
+    let bid_account = &mut ctx.accounts.bid_pda;
+    let current_timestamp =  ctx.accounts.clock.unix_timestamp;
+
+    require!(current_timestamp >= auction_acc.end_time , AuctionErrorCode::AuctionIsActive);
+    require!(auction_acc.highest_bidder == ctx.accounts.bidder.key() , AuctionErrorCode::BidderIsNotValidWinner);
+
+    require!(
+        ctx.accounts.escrow_token_account.amount == 1,
+        BuySellErrorCode::InvalidNFTAmont
+    );
+
+    let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.auction]];
+    let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+
+    let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
+    let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
+
+
+    // let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
+    // let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+
+    let metadata_account =
+        Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?;
+    let seller_fees_points = metadata_account.seller_fee_basis_points;
+
+    let total_royalty_amount = (price as u128 * seller_fees_points as u128 / 10000) as u64; 
+
+    let mut account_index = 0;
+    let mut distributed_royalty = 0u64;
+
+    let creators = metadata_account.creators;
+
+    if let Some(creators_vec) = creators {
+        let bid_pda = bid_account.to_account_info();
+
+        for creator in creators_vec.iter() {
+            if creator.verified {
+                let creator_share =
+                    (total_royalty_amount as u128 * creator.share as u128 / 100) as u64;
+
+                if creator.share > 0 {
+                    if account_index < ctx.remaining_accounts.len() {
+                        require!(
+                            ctx.remaining_accounts[account_index].key() == creator.address,
+                            BuySellErrorCode::InvalidCreatorAccount
+                        );
+
+                        let cpi_accounts = Transfer {
+                            from: bid_pda.to_account_info(),
+                            to: ctx.remaining_accounts[account_index].to_account_info(),
+                        };
+
+                        let cpi_program = ctx.accounts.system_program.to_account_info();
+                        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts,signer_seeds_arr_escrow);
+
+                        anchor_lang::system_program::transfer(cpi_context, creator_share)?;
+                        distributed_royalty += creator_share;
+                    }
+                    account_index += 1;
+                } else {
+                    return err!(BuySellErrorCode::InvalidCreators);
+                }
+            }
+        }
+    }
+
+    let seller_amount = price - total_royalty_amount;
+
+    let undistributed_royalty = total_royalty_amount - distributed_royalty;
+
+    let total_seller_amount = seller_amount + undistributed_royalty;
+
+    if total_seller_amount > 0 {
+        let cpi_account = Transfer {
+            from: ctx.accounts.bidder.to_account_info(),
+            to: ctx.accounts.seller.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.system_program.to_account_info();
+        let cpi_context = CpiContext::new(cpi_program, cpi_account);
+        anchor_lang::system_program::transfer(cpi_context, total_seller_amount)?;
+    }
+
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        TransferChecked {
+            from: ctx.accounts.escrow_token_account.to_account_info(),
+            to: ctx.accounts.buyer_token_account.to_account_info(),
+            authority: auction_acc.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
+        },
+        signer_seeds_arr,
+    );
+
+    token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+
+    auction_acc.auction_status = AuctionStatus::Settled;
     Ok(())
 }
 
@@ -359,5 +543,23 @@ pub enum AuctionErrorCode {
 
     #[msg("previous bidder mismatch")]
     PreviousBidderMismatch,
+
+    #[msg("invalid bidder")]
+    InvalidBidderAccount,
+
+    #[msg("Insufficient funds!!")]
+    InsufficientBalance,
+
+    #[msg("illegal Cancel AUction!!")]
+    IllegalCancelAuction,
+
+    #[msg("Auction Is Active!!")]
+    AuctionIsActive,
+
+    #[msg("Auction Is Not Started!!")]
+    AuctionIsNotStarted,
+
+    #[msg("bidder is not valid winner")]
+    BidderIsNotValidWinner
     
 }
