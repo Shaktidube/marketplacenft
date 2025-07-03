@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 pub mod instructions;
+pub mod error;
 
 use instructions::buysell::*;
 use instructions::metadata::*;
@@ -83,20 +84,24 @@ pub mod marketplacenft {
         auction::winner_nft(ctx)?;
         Ok(())
     }
+    pub fn resolve_auction<'info>(ctx:Context<'_, '_, '_, 'info,WinnerNft<'info>>) -> Result<()>{
+        auction::resolve_auction(ctx)?;
+        Ok(())
+    }
     
     pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<()> {
         buysell::buy_nft(ctx)?;
         Ok(())
     }
 
-    pub fn initialize_auction_pda(_ctx: Context<InitializeAuctionPda>) -> Result<()> {
-        auction::initialize_auction_pda(_ctx)?;
-        Ok(())
-    }
-    pub fn initialize_bid_pda(_ctx: Context<InitializeBidPda>) -> Result<()> {
-        auction::initialize_bid_pda(_ctx)?;
-        Ok(())
-    }
+    // pub fn initialize_auction_pda(_ctx: Context<InitializeAuctionPda>) -> Result<()> {
+    //     auction::initialize_auction_pda(_ctx)?;
+    //     Ok(())
+    // }
+    // pub fn initialize_bid_pda(_ctx: Context<InitializeBidPda>) -> Result<()> {
+    //     auction::initialize_bid_pda(_ctx)?;
+    //     Ok(())
+    // }
     pub fn initialize_pda(_ctx: Context<InitializePda>) -> Result<()> {
         buysell::initialize_pda(_ctx)?;
         Ok(())

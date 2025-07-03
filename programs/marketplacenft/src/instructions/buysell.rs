@@ -5,6 +5,7 @@ use anchor_spl::{
 };
 
 use mpl_token_metadata::accounts::Metadata;
+use crate::error::BuySellErrorCode;
 
 pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
     require!(price > 0, BuySellErrorCode::PriceNotAllowed);
@@ -329,32 +330,3 @@ pub struct CloseListing<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[error_code]
-pub enum BuySellErrorCode {
-    #[msg("Creator account does not match metadata")]
-    InvalidCreatorAccount,
-
-    #[msg("fungible token")]
-    InvalidDecimals,
-
-    #[msg("Mint account is not valid nft")]
-    InvalidMint,
-
-    #[msg("insufficient balance")]
-    InvalidAmount,
-
-    #[msg("missing creator account")]
-    InvalidCreators,
-
-    #[msg("listing is not active")]
-    ListingNotActive,
-
-    #[msg("price not allowed")]
-    PriceNotAllowed,
-
-    #[msg("not original lister")]
-    NotOriginalLister,
-
-    #[msg("escrow has no nft")]
-    InvalidNFTAmont,
-}
