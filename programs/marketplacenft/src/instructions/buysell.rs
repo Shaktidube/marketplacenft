@@ -162,33 +162,7 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
     Ok(())
 }
 
-pub fn initialize_pda(_ctx: Context<InitializePda>) -> Result<()> {
-    Ok(())
-}
 
-#[derive(Accounts)]
-#[instruction()]
-pub struct InitializePda<'info> {
-    #[account(
-        init,
-        payer = signer,
-        seeds = [b"listing",mint.key().as_ref()],
-        bump,
-        space = 8 + Listing::INIT_SPACE
-    )]
-    pub pda: Account<'info, Listing>,
-
-    #[account(
-        constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
-        constraint = mint.supply == 1 @ BuySellErrorCode::InvalidMint,
-    )]
-    pub mint: InterfaceAccount<'info, Mint>,
-
-    #[account(mut)]
-    pub signer: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-}
 #[account]
 #[derive(InitSpace)]
 pub struct Listing {
@@ -243,7 +217,9 @@ pub struct BuyNft<'info> {
     pub buyer_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        mut,
+        // mut,
+        init,
+        payer = seller,
         associated_token::mint = mint,
         associated_token::authority = listing,
     )]
@@ -255,14 +231,18 @@ pub struct BuyNft<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction()]
+
 pub struct CreateListing<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
 
     #[account(
-        mut,
-        seeds = [b"listing", mint.key().as_ref()],
+        init,
+        payer = seller,
+        seeds = [b"listing",mint.key().as_ref()],
         bump,
+        space = 8 + Listing::INIT_SPACE
     )]
     pub listing: Account<'info, Listing>,
 
@@ -281,7 +261,9 @@ pub struct CreateListing<'info> {
     pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        mut,
+        // mut,
+        init,
+        payer = seller,
         associated_token::mint = mint,
         associated_token::authority = listing,
     )]

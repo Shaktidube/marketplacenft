@@ -94,16 +94,4 @@ pub mod marketplacenft {
         Ok(())
     }
 
-    // pub fn initialize_auction_pda(_ctx: Context<InitializeAuctionPda>) -> Result<()> {
-    //     auction::initialize_auction_pda(_ctx)?;
-    //     Ok(())
-    // }
-    // pub fn initialize_bid_pda(_ctx: Context<InitializeBidPda>) -> Result<()> {
-    //     auction::initialize_bid_pda(_ctx)?;
-    //     Ok(())
-    // }
-    pub fn initialize_pda(_ctx: Context<InitializePda>) -> Result<()> {
-        buysell::initialize_pda(_ctx)?;
-        Ok(())
-    }
 }
