@@ -45,6 +45,9 @@ pub enum AuctionErrorCode {
     #[msg("Auction Is Not Started!!")]
     AuctionIsNotStarted,
 
+    #[msg("UnAuthorized Signer!!")]
+    UnAuthorizedSigner,
+
     #[msg("bidder is not valid winner")]
     BidderIsNotValidWinner,
 

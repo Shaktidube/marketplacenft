@@ -1,4 +1,4 @@
-use anchor_lang::{ prelude::*, system_program::{transfer, Transfer}};
+use anchor_lang::{ accounts::signer, prelude::*, system_program::{transfer, Transfer}};
 use anchor_spl::{
     associated_token::AssociatedToken, token_interface::{self, spl_pod::option::Nullable, Mint, TokenAccount, TokenInterface,CloseAccount ,TransferChecked}
 };
@@ -169,14 +169,19 @@ pub struct CancelAuction<'info>{
 
 #[derive(Accounts)]
 pub struct WinnerNft<'info> {
+
     #[account(mut)]
-    pub seller: Signer<'info>,
+    pub signer : Signer<'info>,
+
+    #[account(mut)]
+    pub seller: SystemAccount<'info>,
 
     #[account(mut)]
     pub bidder: SystemAccount<'info>,
 
     #[account(
         mut,
+        close = seller,
         seeds = [b"auction", mint.key().as_ref()],
         bump,
     )]
@@ -369,20 +374,6 @@ pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     );
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
-    let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
-    let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
-
-    // let cpi_ctx_close = CpiContext::new_with_signer(
-    //     ctx.accounts.token_program.to_account_info(),
-    //     CloseAccount {
-    //         account: bid_pda.to_account_info(),
-    //         destination: ctx.accounts.seller.to_account_info(),
-    //         authority: auction.to_account_info(),
-    //     },
-    //     signer_seeds_arr_escrow,
-    // );
-    // token_interface::close_account(cpi_ctx_close)?;
-
     auction.auction_status = AuctionStatus::Cancelled;
 
     Ok(())
@@ -395,6 +386,8 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
     let price = auction_acc.current_bid;
     let bid_account = &mut ctx.accounts.bid_pda;
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
+
+    require!(ctx.accounts.signer.key() == auction_acc.highest_bidder || ctx.accounts.signer.key() == auction_acc.seller , AuctionErrorCode::UnAuthorizedSigner);
 
     require!(current_timestamp >= auction_acc.end_time , AuctionErrorCode::AuctionIsActive);
     require!(auction_acc.highest_bidder == ctx.accounts.bidder.key() , AuctionErrorCode::BidderIsNotValidWinner);
@@ -461,8 +454,6 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
 
     let total_seller_amount = seller_amount + undistributed_royalty;
 
-    // let seller = ctx.accounts.seller;
-
     if total_seller_amount > 0 {
 
         let ix = solana_program::system_instruction::transfer(
@@ -495,149 +486,149 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
 
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
-    // let cpi_ctx_close = CpiContext::new_with_signer(
-    //     ctx.accounts.token_program.to_account_info(),
-    //     CloseAccount {
-    //         account: ctx.accounts.escrow_token_account.to_account_info(),
-    //         destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
-    //         authority: auction_acc.to_account_info(),
-    //     },
-    //     signer_seeds_arr,
-    // );
-
-    // token_interface::close_account(cpi_ctx_close)?;
-
     auction_acc.auction_status = AuctionStatus::Settled;
+
+    let close_ata = CpiContext::new_with_signer(
+    ctx.accounts.token_program.to_account_info(),
+    CloseAccount {
+        account: ctx.accounts.escrow_token_account.to_account_info(),
+        destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+        authority: auction_acc.to_account_info(),
+    },
+        signer_seeds_arr
+    );
+    token_interface::close_account(close_ata)?;
+
     Ok(())
 }
 
-pub fn resolve_auction<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> Result<()> {
-    let auction_acc = &mut ctx.accounts.auction;
-    let mint_key = ctx.accounts.mint.key();
-    let price = auction_acc.current_bid;
-    let bid_account = &mut ctx.accounts.bid_pda;
-    let current_timestamp =  ctx.accounts.clock.unix_timestamp;
+// pub fn resolve_auction<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> Result<()> {
+//     let auction_acc = &mut ctx.accounts.auction;
+//     let mint_key = ctx.accounts.mint.key();
+//     let price = auction_acc.current_bid;
+//     let bid_account = &mut ctx.accounts.bid_pda;
+//     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
 
-    require!(current_timestamp >= auction_acc.end_time , AuctionErrorCode::AuctionIsActive);
-    require!(auction_acc.seller == ctx.accounts.seller.key() , AuctionErrorCode::SellerIsNotValidWinner);
+//     require!(current_timestamp >= auction_acc.end_time , AuctionErrorCode::AuctionIsActive);
+//     require!(auction_acc.seller == ctx.accounts.seller.key() , AuctionErrorCode::SellerIsNotValidWinner);
 
-    require!(
-        ctx.accounts.escrow_token_account.amount == 1,
-        BuySellErrorCode::InvalidNFTAmont
-    );
+//     require!(
+//         ctx.accounts.escrow_token_account.amount == 1,
+//         BuySellErrorCode::InvalidNFTAmont
+//     );
 
-    let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.auction]];
-    let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
+//     let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.auction]];
+//     let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
 
-    let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
-    let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
+//     let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
+//     let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
 
-    let metadata_account =
-        Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?;
-    let seller_fees_points = metadata_account.seller_fee_basis_points;
+//     let metadata_account =
+//         Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?;
+//     let seller_fees_points = metadata_account.seller_fee_basis_points;
 
-    let total_royalty_amount = (price as u128 * seller_fees_points as u128 / 10000) as u64; 
+//     let total_royalty_amount = (price as u128 * seller_fees_points as u128 / 10000) as u64; 
 
-    let mut account_index = 0;
-    let mut distributed_royalty = 0u64;
-    let bid_pda = bid_account.to_account_info();
+//     let mut account_index = 0;
+//     let mut distributed_royalty = 0u64;
+//     let bid_pda = bid_account.to_account_info();
 
-    let creators = metadata_account.creators;
+//     let creators = metadata_account.creators;
 
-    if let Some(creators_vec) = creators {
+//     if let Some(creators_vec) = creators {
 
-        for creator in creators_vec.iter() {
-            if creator.verified {
-                let creator_share =
-                    (total_royalty_amount as u128 * creator.share as u128 / 100) as u64;
+//         for creator in creators_vec.iter() {
+//             if creator.verified {
+//                 let creator_share =
+//                     (total_royalty_amount as u128 * creator.share as u128 / 100) as u64;
 
-                if creator.share > 0 {
-                    if account_index < ctx.remaining_accounts.len() {
-                        require!(
-                            ctx.remaining_accounts[account_index].key() == creator.address,
-                            BuySellErrorCode::InvalidCreatorAccount
-                        );
+//                 if creator.share > 0 {
+//                     if account_index < ctx.remaining_accounts.len() {
+//                         require!(
+//                             ctx.remaining_accounts[account_index].key() == creator.address,
+//                             BuySellErrorCode::InvalidCreatorAccount
+//                         );
 
-                        let cpi_accounts = Transfer {
-                            from: bid_pda.to_account_info(),
-                            to: ctx.remaining_accounts[account_index].to_account_info(),
-                        };
+//                         let cpi_accounts = Transfer {
+//                             from: bid_pda.to_account_info(),
+//                             to: ctx.remaining_accounts[account_index].to_account_info(),
+//                         };
 
-                        let cpi_program = ctx.accounts.system_program.to_account_info();
-                        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts,signer_seeds_arr_escrow);
+//                         let cpi_program = ctx.accounts.system_program.to_account_info();
+//                         let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts,signer_seeds_arr_escrow);
 
-                        anchor_lang::system_program::transfer(cpi_context, creator_share)?;
-                        distributed_royalty += creator_share;
-                    }
-                    account_index += 1;
-                } else {
-                    return err!(BuySellErrorCode::InvalidCreators);
-                }
-            }
-        }
-    }
+//                         anchor_lang::system_program::transfer(cpi_context, creator_share)?;
+//                         distributed_royalty += creator_share;
+//                     }
+//                     account_index += 1;
+//                 } else {
+//                     return err!(BuySellErrorCode::InvalidCreators);
+//                 }
+//             }
+//         }
+//     }
 
-    let seller_amount = price - total_royalty_amount;
+//     let seller_amount = price - total_royalty_amount;
 
-    let undistributed_royalty = total_royalty_amount - distributed_royalty;
+//     let undistributed_royalty = total_royalty_amount - distributed_royalty;
 
-    let total_seller_amount = seller_amount + undistributed_royalty;
+//     let total_seller_amount = seller_amount + undistributed_royalty;
 
-    if total_seller_amount > 0 {
+//     if total_seller_amount > 0 {
 
-        // let cpi_account = Transfer {
-        //     from: ctx.accounts.bid_pda.to_account_info(),
-        //     to: ctx.accounts.seller.to_account_info(),
-        // };
-        // let cpi_program = ctx.accounts.system_program.to_account_info();
-        // let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_account,signer_seeds_arr_escrow);
-        // anchor_lang::system_program::transfer(cpi_context, total_seller_amount)?;
+//         // let cpi_account = Transfer {
+//         //     from: ctx.accounts.bid_pda.to_account_info(),
+//         //     to: ctx.accounts.seller.to_account_info(),
+//         // };
+//         // let cpi_program = ctx.accounts.system_program.to_account_info();
+//         // let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_account,signer_seeds_arr_escrow);
+//         // anchor_lang::system_program::transfer(cpi_context, total_seller_amount)?;
 
-        let ix = solana_program::system_instruction::transfer(
-            &bid_pda.key(),
-            &ctx.accounts.seller.key(),
-            total_seller_amount,
-        );
+//         let ix = solana_program::system_instruction::transfer(
+//             &bid_pda.key(),
+//             &ctx.accounts.seller.key(),
+//             total_seller_amount,
+//         );
 
-        solana_program::program::invoke_signed(
-            &ix,
-            &[
-                bid_account.to_account_info(),
-                ctx.accounts.seller.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            signer_seeds_arr_escrow,
-        )?;
-    }
+//         solana_program::program::invoke_signed(
+//             &ix,
+//             &[
+//                 bid_account.to_account_info(),
+//                 ctx.accounts.seller.to_account_info(),
+//                 ctx.accounts.system_program.to_account_info(),
+//             ],
+//             signer_seeds_arr_escrow,
+//         )?;
+//     }
 
-    let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
-        TransferChecked {
-            from: ctx.accounts.escrow_token_account.to_account_info(),
-            to: ctx.accounts.buyer_token_account.to_account_info(),
-            authority: auction_acc.to_account_info(),
-            mint: ctx.accounts.mint.to_account_info(),
-        },
-        signer_seeds_arr,
-    );
+//     let cpi_ctx = CpiContext::new_with_signer(
+//         ctx.accounts.token_program.to_account_info(),
+//         TransferChecked {
+//             from: ctx.accounts.escrow_token_account.to_account_info(),
+//             to: ctx.accounts.buyer_token_account.to_account_info(),
+//             authority: auction_acc.to_account_info(),
+//             mint: ctx.accounts.mint.to_account_info(),
+//         },
+//         signer_seeds_arr,
+//     );
 
-    token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+//     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
-    let cpi_ctx_close = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
-        CloseAccount {
-            account: ctx.accounts.escrow_token_account.to_account_info(),
-            destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
-            authority: auction_acc.to_account_info(),
-        },
-        signer_seeds_arr,
-    );
+//     let cpi_ctx_close = CpiContext::new_with_signer(
+//         ctx.accounts.token_program.to_account_info(),
+//         CloseAccount {
+//             account: ctx.accounts.escrow_token_account.to_account_info(),
+//             destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+//             authority: auction_acc.to_account_info(),
+//         },
+//         signer_seeds_arr,
+//     );
 
-    token_interface::close_account(cpi_ctx_close)?;
+//     token_interface::close_account(cpi_ctx_close)?;
     
 
-    auction_acc.auction_status = AuctionStatus::Settled;
+//     auction_acc.auction_status = AuctionStatus::Settled;
 
-    Ok(())
-}
+//     Ok(())
+// }
 

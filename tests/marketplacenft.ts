@@ -32,13 +32,23 @@ import {
   MPL_TOKEN_METADATA_PROGRAM_ID,
   fetchMetadataFromSeeds,
 } from "@metaplex-foundation/mpl-token-metadata";
-import fs from "fs";
+import fs, { readFileSync } from "fs";
 import * as dotenv from "dotenv";
 dotenv.config({ path: __dirname + "/.env" });
 
 describe("create token account", () => {
   const provider = anchor.AnchorProvider.env();
   provider.opts.commitment = "confirmed";
+
+  const walletKeypair = JSON.parse(readFileSync("keys/keypair.json", "utf-8"))
+  console.log("secret",walletKeypair);
+
+  const accountOneKeypair = JSON.parse(readFileSync("keys/accountOne.json", "utf-8"))
+  console.log("accountOneKeypair",accountOneKeypair);
+
+  const accountTwoKeypair = JSON.parse(readFileSync("keys/accountTwo.json", "utf-8"))
+  console.log("secret",accountTwoKeypair);
+
 
   const connection = provider.connection;
   anchor.setProvider(provider);
@@ -50,7 +60,7 @@ describe("create token account", () => {
   const wallet = provider.wallet;
   console.log("wallet add", wallet.publicKey.toBase58());
   // console.log("wallet add", wallet.);
-  const umi = createUmi(provider.connection.rpcEndpoint, {
+  const umi = createUmi(connection.rpcEndpoint, {
     commitment: "confirmed",
   });
 
@@ -452,15 +462,15 @@ describe("create token account", () => {
     await provider.sendAndConfirm(tx);
   });
 
-  it.only('create listing', async () => {
+  it.skip('create listing', async () => {
 
-    const mintNFTKeypair = new PublicKey("FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ");
-    const newWalletPrivateKey  = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
-    // const newWalletPrivateKey =   [52,14,97,216,249,235,139,38,60,5,93,109,16,132,25,100,204,89,211,87,189,207,8,242,46,36,210,157,121,215,214,161,47,224,131,194,14,180,191,32,184,234,89,91,115,170,166,27,140,189,87,166,161,133,115,254,232,93,89,132,60,175,146,173]
-    // const newWalletPrivateKey =   [114,49,53,106,200,43,202,124,37,57,17,15,229,213,130,84,161,232,108,207,147,76,213,136,205,209,143,194,142,192,90,233,42,211,94,195,121,63,207,245,180,168,203,2,16,144,7,67,200,13,184,193,108,71,192,102,81,1,143,70,94,100,149,38];
-    const newWalletKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(newWalletPrivateKey)
-    );
+    const mintNFTKeypair = new PublicKey("ECeH6GKkpViQzFqbpE5NPT5pwKg9cRZU7Lw1Wx3qZpzy");
+    // const newWalletPrivateKey  = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
+    // // const newWalletPrivateKey =   [52,14,97,216,249,235,139,38,60,5,93,109,16,132,25,100,204,89,211,87,189,207,8,242,46,36,210,157,121,215,214,161,47,224,131,194,14,180,191,32,184,234,89,91,115,170,166,27,140,189,87,166,161,133,115,254,232,93,89,132,60,175,146,173]
+    // // const newWalletPrivateKey =   [114,49,53,106,200,43,202,124,37,57,17,15,229,213,130,84,161,232,108,207,147,76,213,136,205,209,143,194,142,192,90,233,42,211,94,195,121,63,207,245,180,168,203,2,16,144,7,67,200,13,184,193,108,71,192,102,81,1,143,70,94,100,149,38];
+    // const newWalletKeypair = umi.eddsa.createKeypairFromSecretKey(
+    //   new Uint8Array(accountOneKeypair)
+    // );
 
     const largestAccounts = await connection.getTokenLargestAccounts(mintNFTKeypair);
     const largestAccountInfo = largestAccounts.value[0];
@@ -468,7 +478,7 @@ describe("create token account", () => {
     const tokenAccountAddress = largestAccountInfo.address;
     console.log("Token Account Address:", tokenAccountAddress);
 
-    const wallet = Keypair.fromSecretKey(new Uint8Array(newWalletPrivateKey));
+    const wallet = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
 
     const tx = new Transaction();
 
@@ -618,16 +628,13 @@ describe("create token account", () => {
 
   it.skip(' buy nft ', async () => {
 
-    const mintNFTKeypair = new PublicKey("FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ");
+    const mintNFTKeypair = new PublicKey("ECeH6GKkpViQzFqbpE5NPT5pwKg9cRZU7Lw1Wx3qZpzy");
 
     const tx = new Transaction();
 
-    const privatekey = [52,14,97,216,249,235,139,38,60,5,93,109,16,132,25,100,204,89,211,87,189,207,8,242,46,36,210,157,121,215,214,161,47,224,131,194,14,180,191,32,184,234,89,91,115,170,166,27,140,189,87,166,161,133,115,254,232,93,89,132,60,175,146,173] 
-    // const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
+    const signerKeypair = umi.eddsa.createKeypairFromSecretKey(new Uint8Array(accountOneKeypair));
 
-    const signerKeypair = umi.eddsa.createKeypairFromSecretKey(new Uint8Array(privatekey));
-
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
 
     const buyerPublickey = signerKeypair.publicKey;
     // console.log("buyer pub key : ",buyerPublickey)
@@ -762,19 +769,15 @@ describe("create token account", () => {
     console.log("✅ NFT PURCHASED ✅")
   })
 
-  it.skip("create auction", async () => {
-    const mintNFTKeypair  = new PublicKey("FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ");
+  it.only("create auction", async () => {
+    const mintNFTKeypair  = new PublicKey("AbFfnqEjm3dTyZm4bQtmD8ru9bV2rsSN27UbU67TqEWY");
 
 
     // for seller ----------------------------------------------
-    // const newWalletPrivateKey  = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83, 86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79, 36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86, 92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63]
-    const newWalletPrivateKey =   [52,14,97,216,249,235,139,38,60,5,93,109,16,132,25,100,204,89,211,87,189,207,8,242,46,36,210,157,121,215,214,161,47,224,131,194,14,180,191,32,184,234,89,91,115,170,166,27,140,189,87,166,161,133,115,254,232,93,89,132,60,175,146,173]
     const newWalletKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(newWalletPrivateKey)
+      new Uint8Array(accountOneKeypair)
     );
-    const wallet = Keypair.fromSecretKey(new Uint8Array(newWalletPrivateKey));
-    // ------------------------------------------------
-
+    // const wallet = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
 
     const tx = new Transaction();
 
@@ -811,7 +814,7 @@ describe("create token account", () => {
       (await provider.connection.getBlockTime(
         await provider.connection.getSlot()
       )) || Math.floor(Date.now() / 1000);
-    const startTime = new anchor.BN(1751866132);
+    const startTime = new anchor.BN(1751879446);
     console.log("start time : ", startTime.toString());
 
     const initialPrice = new anchor.BN(100000000);
@@ -832,22 +835,22 @@ describe("create token account", () => {
       .instruction();
 
     tx.add(createAuction);
-    await provider.sendAndConfirm(tx,[wallet]);
+    await provider.sendAndConfirm(tx,[]);
 
     console.log("✅ auction created ");
     console.log("Auction initial price");
   });
 
   it.skip("first bid", async () => {
-    const mintNFTKeypair  = new PublicKey("FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ");
+    const mintNFTKeypair  = new PublicKey("AbFfnqEjm3dTyZm4bQtmD8ru9bV2rsSN27UbU67TqEWY");
     // console.log("first bidder private key : ", Uint8Array.from(JSON.parse(process.env.FIRSTBIDDERPRIVATEKEY)));
 
-    const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83,86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79,36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86,92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63,];
+    // const privatekey = [163, 69, 154, 2, 166, 229, 71, 132, 208, 172, 73, 103, 202, 94, 229, 83,86, 164, 214, 28, 169, 237, 114, 164, 232, 243, 52, 27, 131, 104, 37, 79,36, 169, 185, 105, 4, 111, 95, 13, 19, 65, 118, 99, 195, 119, 158, 27, 86,92, 19, 9, 252, 34, 15, 253, 252, 176, 208, 172, 132, 54, 233, 63,];
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(privatekey)
+      new Uint8Array(accountOneKeypair)
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
 
     const buyerPublickey = signerKeypair.publicKey;
 
@@ -908,19 +911,17 @@ describe("create token account", () => {
   });
 
   it.skip("second bid", async () => {
-    const mintNFTKeypair  = new PublicKey("FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ");
+    const mintNFTKeypair  = new PublicKey("AbFfnqEjm3dTyZm4bQtmD8ru9bV2rsSN27UbU67TqEWY");
 
     const firstBidderbalance = new PublicKey(
       "3U7nN2s3SJ4MZyL52cYPrmoVtCEMxbLef2UKne9nQJHL"
     );
 
-    const privatekey = [114,49,53,106,200,43,202,124,37,57,17,15,229,213,130,84,161,232,108,207,147,76,213,136,205,209,143,194,142,192,90,233,42,211,94,195,121,63,207,245,180,168,203,2,16,144,7,67,200,13,184,193,108,71,192,102,81,1,143,70,94,100,149,38];
-
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(privatekey)
+      new Uint8Array(accountTwoKeypair)
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
 
     const buyerPublickey = signerKeypair.publicKey;
 
@@ -1043,18 +1044,16 @@ describe("create token account", () => {
 
   it.skip(" winner nft ", async () => {
     const mintNFkeypair = new PublicKey(
-      "FXMaHWEJtSNnX8KENEQFgokrMti7TpHs3ws9HQ9D13CZ"
+      "AbFfnqEjm3dTyZm4bQtmD8ru9bV2rsSN27UbU67TqEWY"
     );
 
     const tx = new Transaction();
 
-    const privatekey = [114,49,53,106,200,43,202,124,37,57,17,15,229,213,130,84,161,232,108,207,147,76,213,136,205,209,143,194,142,192,90,233,42,211,94,195,121,63,207,245,180,168,203,2,16,144,7,67,200,13,184,193,108,71,192,102,81,1,143,70,94,100,149,38];
-
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(privatekey)
+      new Uint8Array(accountTwoKeypair)
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
 
     const buyerPublickey = signerKeypair.publicKey;
     console.log("buyer pub key : ", buyerPublickey);
@@ -1063,6 +1062,7 @@ describe("create token account", () => {
       [Buffer.from("auction"), mintNFkeypair.toBuffer()],
       program.programId
     );
+
     const metadataProgramId = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
 
     const auctionAccount = await program.account.auction.fetch(auctionPda);
@@ -1146,12 +1146,13 @@ describe("create token account", () => {
         isSigner: false,
       }));
     }
-
+    console.log("........");
     const buyNft = await program.methods
       .winnerNft()
       .accounts({
         seller: wallet.publicKey,
         bidder: buyerKeypair.publicKey,
+        signer:buyerKeypair.publicKey,
         mint: mintNFkeypair,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -1159,16 +1160,10 @@ describe("create token account", () => {
       .instruction();
 
     tx.add(buyNft);
+    console.log("........");
     await provider.sendAndConfirm(tx, [buyerKeypair]);
 
-    const buyerAccountInfo = await getAccount(connection, buyerAta);
-    const sellerAccountInfo = await getAccount(connection, sellerAta);
-    const escroeAccountInfo = await getAccount(connection, escrowAta);
-
     console.log("creators get Royalty ✅");
-    console.log("buyer account amount : ", buyerAccountInfo.amount);
-    console.log("selller account amount : ", sellerAccountInfo.amount);
-    console.log("escrow acccount amount : ", escroeAccountInfo.amount);
 
     const bidPdaBalance = await connection.getBalance(escrowAtaPda);
     console.log("bid_pda Balance:", bidPdaBalance, "SOL");
@@ -1176,144 +1171,144 @@ describe("create token account", () => {
     console.log("✅ Winnner claimed NFT ✅");
   });
 
-  it.skip(" Resolve auction", async () => {
-    const mintNFkeypair = new PublicKey(
-      "2EKzryGgsyib6HY13A1JsyUze4FMZ2LjSNCJvsrwR15s"
-    );
+  // it.skip(" Resolve auction", async () => {
+  //   const mintNFkeypair = new PublicKey(
+  //     "2EKzryGgsyib6HY13A1JsyUze4FMZ2LjSNCJvsrwR15s"
+  //   );
 
-    const tx = new Transaction();
-    const privatekey = [
-      52, 14, 97, 216, 249, 235, 139, 38, 60, 5, 93, 109, 16, 132, 25, 100, 204,
-      89, 211, 87, 189, 207, 8, 242, 46, 36, 210, 157, 121, 215, 214, 161, 47,
-      224, 131, 194, 14, 180, 191, 32, 184, 234, 89, 91, 115, 170, 166, 27, 140,
-      189, 87, 166, 161, 133, 115, 254, 232, 93, 89, 132, 60, 175, 146, 173,
-    ];
+  //   const tx = new Transaction();
+  //   const privatekey = [
+  //     52, 14, 97, 216, 249, 235, 139, 38, 60, 5, 93, 109, 16, 132, 25, 100, 204,
+  //     89, 211, 87, 189, 207, 8, 242, 46, 36, 210, 157, 121, 215, 214, 161, 47,
+  //     224, 131, 194, 14, 180, 191, 32, 184, 234, 89, 91, 115, 170, 166, 27, 140,
+  //     189, 87, 166, 161, 133, 115, 254, 232, 93, 89, 132, 60, 175, 146, 173,
+  //   ];
 
-    const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(privatekey)
-    );
+  //   const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
+  //     new Uint8Array(privatekey)
+  //   );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
+  //   const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(privatekey));
 
-    const buyerPublickey = signerKeypair.publicKey;
-    console.log("buyer pub key : ", buyerPublickey);
+  //   const buyerPublickey = signerKeypair.publicKey;
+  //   console.log("buyer pub key : ", buyerPublickey);
 
-    const [auctionPda] = await PublicKey.findProgramAddress(
-      [Buffer.from("auction"), mintNFkeypair.toBuffer()],
-      program.programId
-    );
-    const metadataProgramId = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
+  //   const [auctionPda] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("auction"), mintNFkeypair.toBuffer()],
+  //     program.programId
+  //   );
+  //   const metadataProgramId = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
 
-    const auctionAccount = await program.account.auction.fetch(auctionPda);
-    const seller = await auctionAccount.seller;
-    console.log("seller : ", seller);
-    const price = auctionAccount.currentBid as anchor.BN;
-    console.log("Highest bid", price.toString());
+  //   const auctionAccount = await program.account.auction.fetch(auctionPda);
+  //   const seller = await auctionAccount.seller;
+  //   console.log("seller : ", seller);
+  //   const price = auctionAccount.currentBid as anchor.BN;
+  //   console.log("Highest bid", price.toString());
 
-    const buyerSolBalance = await connection.getBalance(buyerKeypair.publicKey);
-    const buyerSolBalanceBN = new anchor.BN(buyerSolBalance);
+  //   const buyerSolBalance = await connection.getBalance(buyerKeypair.publicKey);
+  //   const buyerSolBalanceBN = new anchor.BN(buyerSolBalance);
 
-    // console.log("buyer balance : ",buyerSolBalanceBN);
-    if (buyerSolBalanceBN.lt(price)) {
-      throw new Error("buyer has insufficient sol");
-    }
+  //   // console.log("buyer balance : ",buyerSolBalanceBN);
+  //   if (buyerSolBalanceBN.lt(price)) {
+  //     throw new Error("buyer has insufficient sol");
+  //   }
 
-    const pdaAccountInfo = await connection.getAccountInfo(auctionPda);
-    if (!pdaAccountInfo) {
-      console.log("NFT IS NOT PRESENT");
-    }
+  //   const pdaAccountInfo = await connection.getAccountInfo(auctionPda);
+  //   if (!pdaAccountInfo) {
+  //     console.log("NFT IS NOT PRESENT");
+  //   }
 
-    const [escrowAtaPda, escrowBump] = await PublicKey.findProgramAddress(
-      [Buffer.from("escrow"), auctionPda.toBuffer(), mintNFkeypair.toBuffer()],
-      program.programId
-    );
+  //   const [escrowAtaPda, escrowBump] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("escrow"), auctionPda.toBuffer(), mintNFkeypair.toBuffer()],
+  //     program.programId
+  //   );
 
-    const escrowAta = await getAssociatedTokenAddress(
-      mintNFkeypair,
-      auctionPda,
-      true
-    );
+  //   const escrowAta = await getAssociatedTokenAddress(
+  //     mintNFkeypair,
+  //     auctionPda,
+  //     true
+  //   );
 
-    // console.log("escrow account");
+  //   // console.log("escrow account");
 
-    const sellerAta = await getAssociatedTokenAddress(
-      mintNFkeypair,
-      wallet.publicKey
-    );
-    // console.log("seller ata");
+  //   const sellerAta = await getAssociatedTokenAddress(
+  //     mintNFkeypair,
+  //     wallet.publicKey
+  //   );
+  //   // console.log("seller ata");
 
-    const buyerAta = await getAssociatedTokenAddress(
-      mintNFkeypair,
-      new PublicKey(buyerPublickey)
-    );
-    // console.log("buyer ata");
+  //   const buyerAta = await getAssociatedTokenAddress(
+  //     mintNFkeypair,
+  //     new PublicKey(buyerPublickey)
+  //   );
+  //   // console.log("buyer ata");
 
-    const buyerAccountinfo = await connection.getAccountInfo(buyerAta);
+  //   const buyerAccountinfo = await connection.getAccountInfo(buyerAta);
 
-    if (buyerAccountinfo === null) {
-      const createBuyerAta = createAssociatedTokenAccountInstruction(
-        new PublicKey(buyerPublickey),
-        buyerAta,
-        new PublicKey(buyerPublickey),
-        mintNFkeypair
-      );
-      tx.add(createBuyerAta);
-      // await provider.sendAndConfirm(tx,[buyerKeypair]);
-    }
-    // console.log("nft account ; ", mintNFTKeypair.publicKey);
-    // const metadata = await fetchMetadataFromSeeds(umi,{mint:publicKey(mintNFTCollectionKeypair.publicKey.toBase58())} );
+  //   if (buyerAccountinfo === null) {
+  //     const createBuyerAta = createAssociatedTokenAccountInstruction(
+  //       new PublicKey(buyerPublickey),
+  //       buyerAta,
+  //       new PublicKey(buyerPublickey),
+  //       mintNFkeypair
+  //     );
+  //     tx.add(createBuyerAta);
+  //     // await provider.sendAndConfirm(tx,[buyerKeypair]);
+  //   }
+  //   // console.log("nft account ; ", mintNFTKeypair.publicKey);
+  //   // const metadata = await fetchMetadataFromSeeds(umi,{mint:publicKey(mintNFTCollectionKeypair.publicKey.toBase58())} );
 
-    const asset = await fetchDigitalAsset(umi, publicKey(mintNFkeypair));
-    console.log(asset.metadata.name);
-    // console.log(asset);
+  //   const asset = await fetchDigitalAsset(umi, publicKey(mintNFkeypair));
+  //   console.log(asset.metadata.name);
+  //   // console.log(asset);
 
-    const buyerBalance = await connection.getBalance(buyerKeypair.publicKey);
-    console.log("bidder balance : ", buyerBalance);
+  //   const buyerBalance = await connection.getBalance(buyerKeypair.publicKey);
+  //   console.log("bidder balance : ", buyerBalance);
 
-    const creators = asset.metadata?.creators;
-    let remainingAccounts: {
-      pubkey: PublicKey;
-      isWritable: boolean;
-      isSigner: boolean;
-    }[] = [];
+  //   const creators = asset.metadata?.creators;
+  //   let remainingAccounts: {
+  //     pubkey: PublicKey;
+  //     isWritable: boolean;
+  //     isSigner: boolean;
+  //   }[] = [];
 
-    if (asset.metadata.creators.__option == "Some") {
-      const creators = asset.metadata.creators.value;
-      remainingAccounts = creators.map((creator) => ({
-        pubkey: new PublicKey(creator.address.toString()),
-        isWritable: true,
-        isSigner: false,
-      }));
-    }
+  //   if (asset.metadata.creators.__option == "Some") {
+  //     const creators = asset.metadata.creators.value;
+  //     remainingAccounts = creators.map((creator) => ({
+  //       pubkey: new PublicKey(creator.address.toString()),
+  //       isWritable: true,
+  //       isSigner: false,
+  //     }));
+  //   }
 
-    const buyNft = await program.methods
-      .resolveAuction()
-      .accounts({
-        seller: wallet.publicKey,
-        bidder: buyerKeypair.publicKey,
-        mint: mintNFkeypair,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .remainingAccounts(remainingAccounts)
-      .instruction();
+  //   const buyNft = await program.methods
+  //     .resolveAuction()
+  //     .accounts({
+  //       seller: wallet.publicKey,
+  //       bidder: buyerKeypair.publicKey,
+  //       mint: mintNFkeypair,
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     })
+  //     .remainingAccounts(remainingAccounts)
+  //     .instruction();
 
-    tx.add(buyNft);
-    await provider.sendAndConfirm(tx, [buyerKeypair]);
+  //   tx.add(buyNft);
+  //   await provider.sendAndConfirm(tx, [buyerKeypair]);
 
-    const buyerAccountInfo = await getAccount(connection, buyerAta);
-    const sellerAccountInfo = await getAccount(connection, sellerAta);
-    const escroeAccountInfo = await getAccount(connection, escrowAta);
+  //   const buyerAccountInfo = await getAccount(connection, buyerAta);
+  //   const sellerAccountInfo = await getAccount(connection, sellerAta);
+  //   const escroeAccountInfo = await getAccount(connection, escrowAta);
 
-    console.log("creators get Royalty ✅");
-    console.log("buyer account amount : ", buyerAccountInfo.amount);
-    console.log("selller account amount : ", sellerAccountInfo.amount);
-    console.log("escrow acccount amount : ", escroeAccountInfo.amount);
+  //   console.log("creators get Royalty ✅");
+  //   console.log("buyer account amount : ", buyerAccountInfo.amount);
+  //   console.log("selller account amount : ", sellerAccountInfo.amount);
+  //   console.log("escrow acccount amount : ", escroeAccountInfo.amount);
 
-    const bidPdaBalance = await connection.getBalance(escrowAtaPda);
-    console.log("bid_pda Balance:", bidPdaBalance, "SOL");
+  //   const bidPdaBalance = await connection.getBalance(escrowAtaPda);
+  //   console.log("bid_pda Balance:", bidPdaBalance, "SOL");
 
-    console.log("✅ Winnner claimed NFT ✅");
-  });
+  //   console.log("✅ Winnner claimed NFT ✅");
+  // });
 
   it("verify collection", async () => {
     const mintNFTPublickey = new PublicKey(
