@@ -1,9 +1,9 @@
 .anchor
 .DS_Store
 target
+keys
 **/*.rs.bk
 node_modules
 test-ledger
 .yarn
 .env
-keys/

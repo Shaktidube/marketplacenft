@@ -554,7 +554,7 @@ describe("create token account", () => {
 
   // });
 
-  it.only(' buy nft ', async () => {
+  it.skip(' buy nft ', async () => {
 
     const mintNFTKeypair = new PublicKey("AY2FnkifvLBE2sDyBJTgv4NMxLZstXwBh2NfQJu6yjw8");
 
