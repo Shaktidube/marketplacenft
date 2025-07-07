@@ -3,7 +3,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{self, TokenInterface,Mint, MintTo, TokenAccount},
 };
-use mpl_token_metadata::instructions::{CreateMasterEditionV3, CreateMasterEditionV3InstructionArgs};
+// use mpl_token_metadata::instructions::{CreateMasterEditionV3, CreateMasterEditionV3InstructionArgs};
 
 
 // ----------------------------
@@ -167,62 +167,3 @@ pub fn mint_to_nft(_ctx: Context<NftMintTo>) -> Result<()> {
     token_interface::mint_to(cpi_context, 1)?;
     Ok(())
 }
-// // ----------------------------
-// // Instruction: Mint 1 NFT to a token account
-// // ----------------------------
-// pub fn mint_to_nft(_ctx: Context<NftMintTo>) -> Result<()> {
-
-//     // Check that signer is mint authority
-//     require!(_ctx.accounts.mint.mint_authority == COption::Some(_ctx.accounts.signer.key()), MintErrorCode::InvalidMintAuthority);
-
-//     // Check that signer owns the token account
-//     require!(_ctx.accounts.token_account.owner == _ctx.accounts.signer.key(), MintErrorCode::InvalidTokenAccountOwner);
-    
-//     // Mint exactly 1 NFT token
-//     let cpi_accounts = MintTo {
-//         mint: _ctx.accounts.mint.to_account_info(),
-//         to: _ctx.accounts.token_account.to_account_info(),
-//         authority: _ctx.accounts.signer.to_account_info(),
-//     };
-//     let cpi_program = _ctx.accounts.token_program.to_account_info();
-//     let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
-//     token_interface::mint_to(cpi_context, 1)?;
-
-
-//     // create master edition NFt 
-//     let max_supply = Some(0);
-//     let create_master_edition = CreateMasterEditionV3 {
-//         edition: _ctx.accounts.master_edition_account.key(),
-//         mint: _ctx.accounts.mint.key(),
-//         update_authority: _ctx.accounts.signer.key(),
-//         payer: _ctx.accounts.signer.key(),
-//         mint_authority: _ctx.accounts.signer.key(),
-//         metadata: _ctx.accounts.metadata_account.key(),
-//         token_program: _ctx.accounts.token_program.key(),
-//         system_program: _ctx.accounts.system_program.key(),
-//         rent: None,
-//     };
-
-//     let instruction = CreateMasterEditionV3InstructionArgs {
-//         max_supply: max_supply,
-//     };
-
-//     let combien_instruction = create_master_edition.instruction(instruction);
-
-//     anchor_lang::solana_program::program::invoke(&combien_instruction, 
-//     &[
-//         _ctx.accounts.master_edition_account.to_account_info(),
-//         _ctx.accounts.mint.to_account_info(),
-//         _ctx.accounts.signer.to_account_info(),
-//         _ctx.accounts.signer.to_account_info(),
-//         _ctx.accounts.signer.to_account_info(),
-//         _ctx.accounts.metadata_account.to_account_info(),
-//         _ctx.accounts.token_program.to_account_info(),
-//         _ctx.accounts.system_program.to_account_info(),
-//         _ctx.accounts.token_metadata_program.to_account_info(),
-//     ]
-//     )?;
-
-
-//     Ok(())
-// }

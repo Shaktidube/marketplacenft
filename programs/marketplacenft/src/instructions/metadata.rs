@@ -160,7 +160,7 @@ pub enum MetadataErrorCode {
 - NFT name, symbol, URI, royalty, optional creators & collection info.
 
  Fails if:
-/// - Royalty is 100% or more.  */
+- Royalty is 100% or more.  */
 pub fn create_metadata(
     _ctx: Context<MetadataAcc>,
     _token_name: String,

@@ -6,10 +6,8 @@ use anchor_spl::{
 use mpl_token_metadata::accounts::Metadata;
 use crate::error::BuySellErrorCode;
 
-/* list nft function , if seller is call this function then his nft is goes ata 
- price : seller decide price of nft , like 0.5 SOL ETC
- this function checks price is > 0 if it is fail then it hits error 
- also update listing status
+/* 
+    Create a new NFT listing: transfers NFT from seller to escrow account (PDA)
 */
 pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
     require!(price > 0, BuySellErrorCode::PriceNotAllowed);
@@ -20,6 +18,7 @@ pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
     listing.mint = ctx.accounts.mint.key();
     listing.price = price;
 
+    // Transfer NFT from seller's ATA to program-owned escrow ATA
     let cpi_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         TransferChecked {
@@ -38,7 +37,7 @@ pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
 }
 
 /* 
-
+    Cancel a listing: transfers NFT back to seller from escrow and updates status
 */
 pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
     let listing = &mut ctx.accounts.listing;
@@ -53,6 +52,7 @@ pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
         BuySellErrorCode::NotOriginalLister
     );
 
+    // Prepare signer seeds for PDA authority
     let signer_seeds: &[&[u8]] = &[b"listing", mint_key.as_ref(), &[ctx.bumps.listing]];
 
     let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
@@ -73,6 +73,11 @@ pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
 
     Ok(())
 }
+
+/*
+    buy NFT: distributes royalties to creators, pays seller, and transfers NFT to buyer,
+    use remaining account for distribute royalty
+*/
 
 pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<()> {
     let listing = &mut ctx.accounts.listing;
@@ -182,19 +187,13 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
 
     listing.status = ListingStatus::Sold;
 
-    // let cpi_accounts = CloseAccount {
-    //     account: ctx.accounts.escrow_token_account.to_account_info(),
-    //     destination: ctx.accounts.seller.to_account_info(), // Returns rent to seller
-    //     authority: listing.to_account_info(),
-    // };
-    // let cpi_program = ctx.accounts.token_program.to_account_info();
-
-    // token_interface::close_account(CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds_arr),)?;
-    // listing.exit(&ctx.program_id)?;
     Ok(())
 }
 
-
+/* 
+    Listing struct for storing listing data like seller account , mint nft public key , 
+    price of nft , and status.
+*/
 #[account]
 #[derive(InitSpace)]
 pub struct Listing {
@@ -261,9 +260,10 @@ pub struct BuyNft<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/* init listing pda  with nft public key */
+
 #[derive(Accounts)]
 #[instruction()]
-
 pub struct CreateListing<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
