@@ -145,13 +145,13 @@ pub struct CancelAuction<'info>{
     )]
     pub auction: Account<'info, Auction>,
 
+    /// CHECK : this account hold sol only
     #[account(
         mut,
-        close = seller,
         seeds = [b"escrow", mint.key().as_ref()],
         bump,
     )]
-    pub bid_pda: Account<'info, Escrow>,
+    pub bid_pda: UncheckedAccount<'info>,
 
     #[account(
         constraint = mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
@@ -410,6 +410,9 @@ pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
             &[ctx.bumps.auction]
         ];
     let signer_seeds_arr= &[&signer_seeds[..]];
+
+    let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
+    let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
     
     let cpi_ctx = CpiContext::new_with_signer(
         ctx.accounts.token_program.to_account_info(),
@@ -424,6 +427,30 @@ pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
     auction.auction_status = AuctionStatus::Cancelled;
+
+    let close_ata = CpiContext::new_with_signer(
+    ctx.accounts.token_program.to_account_info(),
+    CloseAccount {
+        account: ctx.accounts.escrow_token_account.to_account_info(),
+        destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+        authority: auction.to_account_info(),
+    },
+        signer_seeds_arr
+    );
+    token_interface::close_account(close_ata)?;
+
+    let bid_escrow = &mut ctx.accounts.bid_pda;
+    let remaining_lamports = bid_escrow.lamports();
+
+    if remaining_lamports > 0 {
+        let cpi_account = Transfer {
+            from: ctx.accounts.bid_pda.to_account_info(),
+            to: ctx.accounts.seller.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.system_program.to_account_info();
+        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_account,signer_seeds_arr_escrow);
+        anchor_lang::system_program::transfer(cpi_context, remaining_lamports)?;
+    }
 
     Ok(())
 }
