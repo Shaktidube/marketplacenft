@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     token::Token,
-    token_interface::{Mint, MintTo, TokenAccount, TokenInterface, TransferChecked}
+    token_interface::{Mint},
 };
 
 use mpl_token_metadata::{
@@ -12,15 +12,19 @@ use mpl_token_metadata::{
     types::{Collection, Creator, DataV2},
 };
 
+// Accounts context for creating metadata for a mint
 #[derive(Accounts)]
 pub struct MetadataAcc<'info> {
+    // Signer who pays and is the authority of the mint
     #[account(mut)]
     pub signer: Signer<'info>,
 
+    /// Mint account for the NFT
     #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
 
-    /// CHECK
+    /* Metadata PDA account (PDA must match seeds for mint) */
+    /// CHECK : This account is derived and verified using seeds 
     #[account(
             mut,
             seeds = [b"metadata", mpl_token_metadata::ID.as_ref(),mint.key().as_ref()],
@@ -31,11 +35,12 @@ pub struct MetadataAcc<'info> {
 
     pub token_program: Program<'info, Token>,
 
-    /// CHECK
+    /// CHECK: this account is used for External program
     pub token_metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
+/// Custom input struct to define a Creator
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct CreatorInput {
     pub address: Pubkey,
@@ -43,6 +48,7 @@ pub struct CreatorInput {
     pub share: u8,
 }
 
+/// Account context for creating a Master Edition
 #[derive(Accounts)]
 pub struct MasterEdition<'info> {
     #[account(mut)]
@@ -51,7 +57,8 @@ pub struct MasterEdition<'info> {
     #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
 
-    /// CHECK
+    /// Metadata PDA for the mint
+    /// CHECK: Verified using seeds
     #[account(
             mut,
             seeds = [b"metadata", mpl_token_metadata::ID.as_ref(),mint.key().as_ref()],
@@ -60,7 +67,8 @@ pub struct MasterEdition<'info> {
         )]
     pub metadata_account: UncheckedAccount<'info>,
 
-    /// CHECK
+    /// Master Edition PDA account for the mint
+    /// CHECK: Verified using seeds
     #[account(
             mut,
             seeds = [b"metadata",mpl_token_metadata::ID.as_ref(),mint.key().as_ref(),b"edition"],
@@ -71,20 +79,23 @@ pub struct MasterEdition<'info> {
 
     pub token_program: Program<'info, Token>,
 
-    /// CHECK
+    /// CHECK: External program
     pub token_metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
-
+/// Account context for verifying an NFT against a collection
 #[derive(Accounts)]
 pub struct VerifyCollectionContext<'info> {
+    /// Authority who owns the collection
     pub collection_authority: Signer<'info>,
 
+    /// Payer of transaction fees
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK
+    /// Metadata account of the NFT being verified
+    /// CHECK: PDA validated using seeds
     #[account(
             mut,
             seeds = [
@@ -99,7 +110,7 @@ pub struct VerifyCollectionContext<'info> {
     pub nft_mint: InterfaceAccount<'info, Mint>,
     pub collection_mint: InterfaceAccount<'info, Mint>,
 
-    /// CHECK:
+    /// CHECK:This is the metadata PDA for the collection mint
     #[account(
             seeds = [
                 b"metadata",
@@ -111,7 +122,8 @@ pub struct VerifyCollectionContext<'info> {
         )]
     pub collection_metadata: UncheckedAccount<'info>,
 
-    /// CHECK:
+    /// Master edition account of the collection
+    /// CHECK: PDA validated using seeds
     #[account(
             seeds = [
                 b"metadata",
@@ -126,7 +138,7 @@ pub struct VerifyCollectionContext<'info> {
 
     pub system_program: Program<'info, System>,
 
-    /// CHECK:
+    /// CHECK: This is the Metaplex Token Metadata program account
     #[account(address = mpl_token_metadata::ID)]
     pub token_metadata_program: UncheckedAccount<'info>,
 }
@@ -134,10 +146,21 @@ pub struct VerifyCollectionContext<'info> {
 #[error_code]
 pub enum MetadataErrorCode {
     #[msg("100% royalty is not allowed")]
-    InvalidRoyalty
+    InvalidRoyalty,
 }
 
+/*  Function to create metadata for a mint (used for NFTs)
+ Creates on-chain metadata for an NFT using Metaplex Token Metadata V3.
 
+- Validates royalty (<100%) and prepares creator & collection data.
+- Uses CPI to invoke `CreateMetadataAccountV3`.
+- Makes metadata immutable (`is_mutable: false`).
+
+ Params:
+- NFT name, symbol, URI, royalty, optional creators & collection info.
+
+ Fails if:
+/// - Royalty is 100% or more.  */
 pub fn create_metadata(
     _ctx: Context<MetadataAcc>,
     _token_name: String,
@@ -148,9 +171,10 @@ pub fn create_metadata(
     _collection_mint: Option<Pubkey>,
     _collection_verified: Option<bool>,
 ) -> Result<()> {
-
+    // Prevent 100% royalty (10000 basis points = 100%)
     require!(_royalty < 10000, MetadataErrorCode::InvalidRoyalty);
 
+    //  Convert CreatorInput to Metaplex Creator format
     let creators = if let Some(creator_inputs) = _creators {
         let mut creators_vec = Vec::new();
         for creator_input in creator_inputs {
@@ -217,6 +241,20 @@ pub fn create_metadata(
     Ok(())
 }
 
+/*  Creates a Master Edition for an NFT using Metaplex.
+
+ - Links the NFT's metadata with a master edition account.
+ - Optionally sets a `max_supply` to limit the number of editions.
+
+ `max_supply` controls how many editions (copies) can be printed:
+
+- `Some(0)`: NFT is a unique 1-of-1 — no editions can be minted.
+- `Some(n)`: Up to `n` editions can be minted.
+- `None` or `null`: Unlimited editions can be printed.
+
+ Uses CPI to call `CreateMasterEditionV3`.
+
+/ Required for making the NFT non-fungible and enabling printing of editions.*/
 pub fn master_edition(_ctx: Context<MasterEdition>, _max_supply: Option<u64>) -> Result<()> {
     let create_master_edition = CreateMasterEditionV3 {
         edition: _ctx.accounts.master_edition_account.key(),
@@ -253,6 +291,13 @@ pub fn master_edition(_ctx: Context<MasterEdition>, _max_supply: Option<u64>) ->
     Ok(())
 }
 
+/*  Verifies that an NFT belongs to a specific verified collection (Metaplex).
+
+- Links the NFT to a collection NFT (via metadata & master edition).
+- Requires the collection authority's signature.
+- Ensures the collection is authentic and verified on-chain.
+
+/// Uses CPI to call `VerifyCollection` instruction (Metaplex v5.1.0).*/
 pub fn verify_collection(ctx: Context<VerifyCollectionContext>) -> Result<()> {
     let verify_ix = VerifyCollection {
         metadata: ctx.accounts.metadata.key(),

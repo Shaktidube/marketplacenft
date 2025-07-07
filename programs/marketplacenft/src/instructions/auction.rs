@@ -5,6 +5,8 @@ use anchor_spl::{
 use mpl_token_metadata::accounts::Metadata;
 use crate::error::{AuctionErrorCode,BuySellErrorCode};
 
+
+/* This account stores all auction-related data   */
 #[account]
 #[derive(InitSpace)]
 pub struct Auction {
@@ -18,6 +20,7 @@ pub struct Auction {
     pub auction_status : AuctionStatus,
 }
 
+/* Represents the different states an auction can be in */
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, InitSpace)]
 pub enum AuctionStatus{
     Created,
@@ -27,33 +30,17 @@ pub enum AuctionStatus{
     Settled
 }
 
-
+/* storing bid */
 #[account]
 pub struct Escrow;
 
-#[derive(Accounts)]
-pub struct InitializeBidPda<'info> {
-    #[account(
-        init,
-        payer = bidder,
-        seeds = [b"escrow",nft_mint.key().as_ref()],
-        bump,
-        space = 0,
-        owner= anchor_lang::system_program::ID
-    )]
-    /// CHECK : this account hold only sol
-    pub bid_pda: UncheckedAccount<'info>,
 
-    #[account(mut)]
-    pub nft_mint: InterfaceAccount<'info, Mint>,
-
-    #[account(mut)]
-    pub bidder: Signer<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-
+/* Accounts required to start a new NFT auction.
+ Summary:
+ - Initializes a new `Auction` account using a PDA.
+ - Validates the NFT is a proper 1-of-1 mint (decimals == 0, supply == 1).
+ - Transfers the NFT from the seller to an escrow token account owned by the auction PDA. 
+*/
 #[derive(Accounts)]
 #[instruction()]
 pub struct StartAuction<'info>{
@@ -64,14 +51,15 @@ pub struct StartAuction<'info>{
         init,
         payer = seller,
         seeds = [b"auction", nft_mint.key().as_ref()],
-        space = 8 + Auction::INIT_SPACE,
+        space = 8 + Auction::INIT_SPACE, // 8 bytes for account discriminator + struct space
         bump 
     )]
     pub auction: Account<'info, Auction>,
 
+    /// NFT Mint Account (must be an NFT: decimals = 0, supply = 1)
     #[account(
-        constraint = nft_mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals,
-        constraint = nft_mint.supply == 1 @ BuySellErrorCode::InvalidMint,
+        constraint = nft_mint.decimals == 0 @ BuySellErrorCode::InvalidDecimals, // Must not be a fungible token
+        constraint = nft_mint.supply == 1 @ BuySellErrorCode::InvalidMint, // NFT must have supply of 1
     )]
     pub nft_mint: InterfaceAccount<'info, Mint>,
 
@@ -90,7 +78,7 @@ pub struct StartAuction<'info>{
         init,
         payer = seller,
         associated_token::mint = nft_mint,
-        associated_token::authority = auction,
+        associated_token::authority = auction,  // Escrow owned by auction PDA
     )]
     pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
     pub token_program: Interface<'info, TokenInterface>,
@@ -244,7 +232,6 @@ pub fn create_auction(ctx:Context<StartAuction>,start_time:i64,bid_start_from:u6
     let auction = &mut ctx.accounts.auction;
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
-    let previous = now - 1;
     require!(start_time >= now , AuctionErrorCode::AuctionStartTimeInPast);
 
     let auction_end_time = start_time + duration;
@@ -355,7 +342,6 @@ pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amoun
 pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     let auction =&mut ctx.accounts.auction;
     let mint_key = ctx.accounts.mint.key();
-    let bid_pda = &ctx.accounts.bid_pda;
     // let bid_pda = &ctx.accounts.bid_pda;
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
     
@@ -383,8 +369,8 @@ pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     );
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
-    // let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
-    // let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
+    let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
+    let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
 
     // let cpi_ctx_close = CpiContext::new_with_signer(
     //     ctx.accounts.token_program.to_account_info(),
@@ -423,10 +409,6 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
 
     let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
     let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
-
-
-    // let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
-    // let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
 
     let metadata_account =
         Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?;
@@ -513,6 +495,18 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
 
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
+    // let cpi_ctx_close = CpiContext::new_with_signer(
+    //     ctx.accounts.token_program.to_account_info(),
+    //     CloseAccount {
+    //         account: ctx.accounts.escrow_token_account.to_account_info(),
+    //         destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+    //         authority: auction_acc.to_account_info(),
+    //     },
+    //     signer_seeds_arr,
+    // );
+
+    // token_interface::close_account(cpi_ctx_close)?;
+
     auction_acc.auction_status = AuctionStatus::Settled;
     Ok(())
 }
@@ -537,10 +531,6 @@ pub fn resolve_auction<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>)
 
     let signer_seeds_escorw: &[&[u8]] = &[b"escrow", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
     let signer_seeds_arr_escrow: &[&[&[u8]]] = &[signer_seeds_escorw];
-
-
-    // let signer_seeds: &[&[u8]] = &[b"auction", mint_key.as_ref(), &[ctx.bumps.bid_pda]];
-    // let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
 
     let metadata_account =
         Metadata::safe_deserialize(&mut ctx.accounts.metadata_account.data.borrow())?;
@@ -594,6 +584,7 @@ pub fn resolve_auction<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>)
     let total_seller_amount = seller_amount + undistributed_royalty;
 
     if total_seller_amount > 0 {
+
         // let cpi_account = Transfer {
         //     from: ctx.accounts.bid_pda.to_account_info(),
         //     to: ctx.accounts.seller.to_account_info(),
@@ -631,6 +622,19 @@ pub fn resolve_auction<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>)
     );
 
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
+
+    let cpi_ctx_close = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        CloseAccount {
+            account: ctx.accounts.escrow_token_account.to_account_info(),
+            destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+            authority: auction_acc.to_account_info(),
+        },
+        signer_seeds_arr,
+    );
+
+    token_interface::close_account(cpi_ctx_close)?;
+    
 
     auction_acc.auction_status = AuctionStatus::Settled;
 

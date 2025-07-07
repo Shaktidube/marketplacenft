@@ -1,12 +1,16 @@
 use anchor_lang::{prelude::*, system_program::Transfer};
 use anchor_spl::{
-    associated_token::AssociatedToken,
-    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
+    associated_token::AssociatedToken, token_interface::{self, Mint, TokenAccount,CloseAccount, TokenInterface, TransferChecked}
 };
 
 use mpl_token_metadata::accounts::Metadata;
 use crate::error::BuySellErrorCode;
 
+/* list nft function , if seller is call this function then his nft is goes ata 
+ price : seller decide price of nft , like 0.5 SOL ETC
+ this function checks price is > 0 if it is fail then it hits error 
+ also update listing status
+*/
 pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
     require!(price > 0, BuySellErrorCode::PriceNotAllowed);
 
@@ -32,6 +36,10 @@ pub fn create_listing(ctx: Context<CreateListing>, price: u64) -> Result<()> {
 
     Ok(())
 }
+
+/* 
+
+*/
 pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
     let listing = &mut ctx.accounts.listing;
     let mint_key = ctx.accounts.mint.key();
@@ -79,6 +87,9 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
         ctx.accounts.escrow_token_account.amount == 1,
         BuySellErrorCode::InvalidNFTAmont
     );
+
+    require!(ctx.accounts.buyer.key() != listing.seller.key(), BuySellErrorCode::BuyerNotValid);
+
 
     let signer_seeds: &[&[u8]] = &[b"listing", mint_key.as_ref(), &[ctx.bumps.listing]];
     let signer_seeds_arr: &[&[&[u8]]] = &[signer_seeds];
@@ -158,7 +169,28 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
 
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
 
+    let close_ata = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        CloseAccount {
+            account: ctx.accounts.escrow_token_account.to_account_info(),
+            destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+            authority: listing.to_account_info(),
+        },
+            signer_seeds_arr
+        );
+        token_interface::close_account(close_ata)?;
+
     listing.status = ListingStatus::Sold;
+
+    // let cpi_accounts = CloseAccount {
+    //     account: ctx.accounts.escrow_token_account.to_account_info(),
+    //     destination: ctx.accounts.seller.to_account_info(), // Returns rent to seller
+    //     authority: listing.to_account_info(),
+    // };
+    // let cpi_program = ctx.accounts.token_program.to_account_info();
+
+    // token_interface::close_account(CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds_arr),)?;
+    // listing.exit(&ctx.program_id)?;
     Ok(())
 }
 
@@ -182,19 +214,20 @@ pub enum ListingStatus {
 #[derive(Accounts)]
 pub struct BuyNft<'info> {
     #[account(mut)]
-    pub seller: Signer<'info>,
+    pub seller: SystemAccount<'info>,
 
     #[account(mut)]
     pub buyer: Signer<'info>,
 
     #[account(
         mut,
+        close = seller,
         seeds = [b"listing", mint.key().as_ref()],
         bump,
     )]
     pub listing: Account<'info, Listing>,
 
-    /// CHECK
+    /// CHECK: this account is used for metadata 
     #[account(
             mut,
             seeds = [b"metadata", mpl_token_metadata::ID.as_ref(),mint.key().as_ref()],
@@ -217,9 +250,7 @@ pub struct BuyNft<'info> {
     pub buyer_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        // mut,
-        init,
-        payer = seller,
+        mut,
         associated_token::mint = mint,
         associated_token::authority = listing,
     )]
@@ -257,11 +288,11 @@ pub struct CreateListing<'info> {
         associated_token::mint = mint,
         associated_token::authority = seller,
         constraint = seller_token_account.amount == 1 @ BuySellErrorCode::InvalidAmount,
+        constraint = seller_token_account.owner == seller.key() @ BuySellErrorCode::UnauthorizedNFTListing,
     )]
     pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        // mut,
         init,
         payer = seller,
         associated_token::mint = mint,
@@ -302,7 +333,8 @@ pub struct CloseListing<'info> {
 
     #[account(
         mut,
-        associated_token::mint = mint,
+        associated_token::
+        mint = mint,
         associated_token::authority = listing,
     )]
     pub escrow_token_account: InterfaceAccount<'info, TokenAccount>,
@@ -311,4 +343,5 @@ pub struct CloseListing<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
+
 

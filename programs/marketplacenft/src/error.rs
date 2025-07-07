@@ -80,4 +80,10 @@ pub enum BuySellErrorCode {
 
     #[msg("escrow has no nft")]
     InvalidNFTAmont,
+
+    #[msg("Unauthorized NFT Listing")]
+    UnauthorizedNFTListing,
+
+    #[msg("buyer is not allowed")]
+    BuyerNotValid,
 }
