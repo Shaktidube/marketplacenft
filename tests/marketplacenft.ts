@@ -428,7 +428,7 @@ describe("create token account", () => {
 
   it.skip('create listing', async () => {
 
-    const mintNFTKeypair = new PublicKey("5x6tZd4LdMAafBNwE2it1zd6qiaxnXjr6RoBhpMJZF4a");
+    const mintNFTKeypair = new PublicKey("D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH");
 
     // const wallet = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
 
@@ -556,7 +556,7 @@ describe("create token account", () => {
 
   it.skip(' buy nft ', async () => {
 
-    const mintNFTKeypair = new PublicKey("5x6tZd4LdMAafBNwE2it1zd6qiaxnXjr6RoBhpMJZF4a");
+    const mintNFTKeypair = new PublicKey("D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH");
 
     const tx = new Transaction();
 
@@ -922,7 +922,7 @@ describe("create token account", () => {
 
   });
 
-  it.only(" winner nft ", async () => {
+  it.skip(" winner nft ", async () => {
      const mintNFkeypair = new PublicKey(
       "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
     );

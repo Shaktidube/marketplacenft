@@ -306,28 +306,28 @@ pub fn create_auction(ctx:Context<StartAuction>,start_time:i64,bid_start_from:u6
     - Updates auction state with new highest bidder and bid amount.
 */
 
-pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amount:u64) -> Result<()>{
+    pub fn place_bid<'info>(ctx:Context<'_, '_, '_, 'info,PlaceBid<'info>>,bid_amount:u64) -> Result<()>{
 
-    let auciton = &mut ctx.accounts.auction;
-    let current_timestamp =  ctx.accounts.clock.unix_timestamp;
-    let bid_account = &mut ctx.accounts.bid_pda;
- 
-    require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
-    require!(current_timestamp >= auciton.start_time , AuctionErrorCode::AuctionIsNotStarted);
-    require!(bid_amount >= auciton.current_bid , AuctionErrorCode::BidNotValid);
-    require!(
-        ctx.accounts.bidder.owner == &solana_program::system_program::ID,
-        AuctionErrorCode::InvalidBidderAccount
-    );
-    require!(ctx.accounts.bidder.key() != auciton.seller.key(),AuctionErrorCode::CurrentBidderIsNotValid);
-    require!(
-        ctx.accounts.bidder.lamports() >= bid_amount,
-        AuctionErrorCode::InsufficientBalance
-    );
+        let auciton = &mut ctx.accounts.auction;
+        let current_timestamp =  ctx.accounts.clock.unix_timestamp;
+        let bid_account = &mut ctx.accounts.bid_pda;
+    
+        require!(current_timestamp <= auciton.end_time , AuctionErrorCode::AuctionTimeOver);
+        require!(current_timestamp >= auciton.start_time , AuctionErrorCode::AuctionIsNotStarted);
+        require!(bid_amount >= auciton.current_bid , AuctionErrorCode::BidNotValid);
+        require!(
+            ctx.accounts.bidder.owner == &solana_program::system_program::ID,
+            AuctionErrorCode::InvalidBidderAccount
+        );
+        require!(ctx.accounts.bidder.key() != auciton.seller.key(),AuctionErrorCode::CurrentBidderIsNotValid);
+        require!(
+            ctx.accounts.bidder.lamports() >= bid_amount,
+            AuctionErrorCode::InsufficientBalance
+        );
 
-    require!(ctx.accounts.bidder.key() != auciton.highest_bidder, AuctionErrorCode::CurrentBidderIsNotValid);
+        require!(ctx.accounts.bidder.key() != auciton.highest_bidder, AuctionErrorCode::CurrentBidderIsNotValid);
 
-    if auciton.current_bid == 0 {
+        if auciton.current_bid == 0 {
         // intilize bid
         require!(current_timestamp >= auciton.start_time, AuctionErrorCode::AuctionTimeOver);
         require!(bid_amount >= auciton.satrt_price , AuctionErrorCode::BidNotValid );
