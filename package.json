@@ -12,7 +12,10 @@
     "@metaplex-foundation/umi-uploader-irys": "^1.2.0",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.2",
-    "dotenv": "^17.0.1"
+    "chalk": "^5.4.1",
+    "dotenv": "^17.0.1",
+    "figlet": "^1.8.1",
+    "ora": "^8.2.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",

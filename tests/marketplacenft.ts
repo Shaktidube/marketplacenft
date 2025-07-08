@@ -4,8 +4,7 @@ import {
   getAssociatedTokenAddress,
   getAccount,
   createAssociatedTokenAccountInstruction,
-  CpiGuardLayout,
-  createMintToInstruction,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
   ASSOCIATED_PROGRAM_ID,
@@ -30,23 +29,33 @@ import {
   fetchDigitalAsset,
   findMetadataPda,
   MPL_TOKEN_METADATA_PROGRAM_ID,
-  fetchMetadataFromSeeds,
 } from "@metaplex-foundation/mpl-token-metadata";
-import fs, { readFileSync } from "fs";
 
+import fs, { readFileSync } from "fs";
+import chalk from "chalk";
+import figlet from "figlet";
+
+
+const metadataProgramId = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+console.log("metadata program id : ", metadataProgramId);
 describe("create token account", () => {
   const provider = anchor.AnchorProvider.env();
   provider.opts.commitment = "confirmed";
 
-  const walletKeypair = JSON.parse(readFileSync("keys/keypair.json", "utf-8"))
-  console.log("secret",walletKeypair);
+  const walletKeypair = JSON.parse(readFileSync("keys/keypair.json", "utf-8"));
+  // console.log("secret", walletKeypair);
 
-  const accountOneKeypair = JSON.parse(readFileSync("keys/accountOne.json", "utf-8"))
-  console.log("accountOneKeypair",accountOneKeypair);
+  const accountOneKeypair = JSON.parse(
+    readFileSync("keys/accountOne.json", "utf-8")
+  );
+  // console.log("accountOneKeypair", accountOneKeypair);
 
-  const accountTwoKeypair = JSON.parse(readFileSync("keys/accountTwo.json", "utf-8"))
-  console.log("secret",accountTwoKeypair);
-
+  const accountTwoKeypair = JSON.parse(
+    readFileSync("keys/accountTwo.json", "utf-8")
+  );
+  // console.log("secret", accountTwoKeypair);
 
   const connection = provider.connection;
   anchor.setProvider(provider);
@@ -56,24 +65,34 @@ describe("create token account", () => {
 
   const wallet = provider.wallet;
   console.log("wallet add", wallet.publicKey.toBase58());
-  
+
   const umi = createUmi(connection.rpcEndpoint, {
     commitment: "confirmed",
   });
 
   const mintKeypair = Keypair.generate();
-  // console.log(mintKeypair)
+  console.log("fungible mint publickey : ",mintKeypair.publicKey);
 
   const mintNFTKeypair = Keypair.generate();
   console.log("nft keypair", mintKeypair.publicKey);
 
   const mintNFTCollectionKeypair = Keypair.generate();
-  console.log(mintKeypair);
+  console.log("colection nft keypair  : ",mintKeypair.publicKey);
 
-  it("Create an SPL Token!", async () => {
+  it.only("mint tokens in your wallet", async () => {
+    const tx = new Transaction();
 
-    const mint = await program.methods
-      .createMint()
+    const ata = await getAssociatedTokenAddress(
+      mintKeypair.publicKey,
+      wallet.publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    console.log("ATA:", ata.toBase58());
+
+    const mintToIx = await program.methods
+      .mintTo(new anchor.BN(15000000000))
       .accounts({
         signer: wallet.publicKey,
         mint: mintKeypair.publicKey,
@@ -81,50 +100,18 @@ describe("create token account", () => {
       })
       .instruction();
 
-    const tx = new Transaction().add(mint);
+    tx.add(mintToIx);
+
     await provider.sendAndConfirm(tx, [mintKeypair]);
-
-    console.log(`mint address ${mintKeypair.publicKey}`);
-    console.log(`✅ fungible Token account created successfully ✅`);
+    
+    console.log(
+        `Explorer: https://explorer.solana.com/address/${mintKeypair.publicKey.toBase58()}?cluster=devnet`
+      );
+    console.log("✅ fungible token minted");
   });
 
-  it("Create an collection NFT", async () => {
 
-    const mint = await program.methods
-      .nftAccount()
-      .accounts({
-        signer: wallet.publicKey,
-        mint: mintNFTCollectionKeypair.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    const tx = new Transaction().add(mint);
-    await provider.sendAndConfirm(tx, [mintNFTCollectionKeypair]);
-
-    console.log(`mint address ${mintNFTCollectionKeypair.publicKey}`);
-    console.log(`✅ NFT collection created successfully ✅`);
-  });
-
-  it("Create an NFT", async () => {
-
-    const mint = await program.methods
-      .nftAccount()
-      .accounts({
-        signer: wallet.publicKey,
-        mint: mintNFTKeypair.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    const tx = new Transaction().add(mint);
-    await provider.sendAndConfirm(tx, [mintNFTKeypair]);
-
-    console.log(`mint address ${mintNFTKeypair.publicKey}`);
-    console.log(`✅ NFT account created successfully ✅`);
-  });
-
-  it("collection metadata added", async () => {
+  it.only("Collection NFT", async () => {
     const privatekey = [
       114, 49, 53, 106, 200, 43, 202, 124, 37, 57, 17, 15, 229, 213, 130, 84,
       161, 232, 108, 207, 147, 76, 213, 136, 205, 209, 143, 194, 142, 192, 90,
@@ -136,7 +123,7 @@ describe("create token account", () => {
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
       new Uint8Array(privatekey)
     );
-    console.log("signerkeypair", signerKeypair);
+    // console.log("signerkeypair", signerKeypair.publicKey);
 
     umi
       .use(keypairIdentity(signerKeypair))
@@ -173,90 +160,72 @@ describe("create token account", () => {
       },
     ];
 
-    const metadata = await program.methods
-      .createMetadata("SOLTOKEN", "SYM", uri, 0, creators, null, null)
-      .accounts({
-        signer: provider.publicKey,
-        mint: mintKeypair.publicKey,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-      })
-      .instruction();
-
-    const tx = new Transaction().add(metadata);
-
-    const collectionMint = mintNFTCollectionKeypair;
-    console.log("collection mint : ", collectionMint);
-
-    const metadataNFTCollection = await program.methods
-      .createMetadata("SOLCOLL", "SOLS", uri, 5000, creators, null, null)
-      .accounts({
-        signer: provider.publicKey,
-        mint: mintNFTCollectionKeypair.publicKey,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(metadataNFTCollection);
-
-    await provider.sendAndConfirm(tx, []);
-
-    // console.log("metadata ",metadata)
-    console.log("💯 metadata added 💯");
-  });
-
-  it("Mint NFT collection in your wallet", async () => {
+    const tx = new Transaction();
 
     const ata = await getAssociatedTokenAddress(
       mintNFTCollectionKeypair.publicKey,
       wallet.publicKey
     );
+    console.log(" ata : ", ata);
 
-    const ataAccountInfo = await connection.getAccountInfo(ata);
-    const tx = new Transaction();
+    const [metadataAccount] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        metadataProgramId.toBuffer(),
+        mintNFTCollectionKeypair.publicKey.toBuffer(),
+      ],
+      metadataProgramId
+    );
+    console.log("Metadata Account PDA:", metadataAccount.toBase58());
 
-    if (ataAccountInfo === null) {
-      const createAta = createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        ata,
-        wallet.publicKey,
-        mintNFTCollectionKeypair.publicKey,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_PROGRAM_ID
-      );
-      tx.add(createAta);
-    }
+    // Derive the PDA for the Metaplex Master Edition Account
+    const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        metadataProgramId.toBuffer(),
+        mintNFTCollectionKeypair.publicKey.toBuffer(),
+        Buffer.from("edition"),
+      ],
+      metadataProgramId
+    );
+    console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
 
     const mintTo = await program.methods
-      .mintToNft()
+      .mintToNft(
+        "SOLNFTT",
+        "SOLSYM",
+        uri,
+        9000,
+        creators,
+        null,
+        null,
+        new anchor.BN(0)
+      )
       .accounts({
         signer: wallet.publicKey,
         mint: mintNFTCollectionKeypair.publicKey,
         tokenAccount: ata,
+        metadataAccount: metadataAccount,
+        masterEditionAccount: masterEditionAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
       })
       .instruction();
 
     tx.add(mintTo);
 
-    console.log(`✅ NFT collection minted ✅`);
+    await provider.sendAndConfirm(tx, [mintNFTCollectionKeypair]);
+
+    console.log(" 💯 NFT Collection Minted 💯");
     console.log(
       ` NFT : https://explorer.solana.com/address/${mintNFTCollectionKeypair.publicKey.toBase58()}?cluster=devnet`
     );
-
-    const masterEdition = await program.methods
-      .masterEdition(new anchor.BN(0))
-      .accounts({
-        signer: wallet.publicKey,
-        mint: mintNFTCollectionKeypair.publicKey,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(masterEdition);
-    await provider.sendAndConfirm(tx);
   });
 
-  it("metadata added", async () => {
+  it.only("Mint NFT in your wallet", async () => {
+    const tx = new Transaction();
 
     const privatekey = [
       52, 14, 97, 216, 249, 235, 139, 38, 60, 5, 93, 109, 16, 132, 25, 100, 204,
@@ -304,131 +273,71 @@ describe("create token account", () => {
       },
     ];
 
-    const tx = new Transaction();
-
-    const metadataNFT = await program.methods
-      .createMetadata(
-        "SOLNFT",
-        "SOLS",
-        uri,
-        9000,
-        creators,
-        mintNFTCollectionKeypair.publicKey,
-        false
-      )
-      .accounts({
-        signer: provider.publicKey,
-        mint: mintNFTKeypair.publicKey,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(metadataNFT);
-
-    await provider.sendAndConfirm(tx);
-
-    console.log("💯 metadata added 💯");
-  });
-
-  it("mint tokens in your wallet", async () => {
-
-    const ata = await getAssociatedTokenAddress(
-      mintKeypair.publicKey,
-      wallet.publicKey
-    );
-
-    const ataAccountInfo = await connection.getAccountInfo(ata);
-    const tx = new Transaction();
-    if (ataAccountInfo === null) {
-      const createAta = createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        ata,
-        wallet.publicKey,
-        mintKeypair.publicKey,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_PROGRAM_ID
-      );
-      tx.add(createAta);
-
-    }
-
-    const mintTo = await program.methods
-      .mintTo(new anchor.BN(15000000000))
-      .accounts({
-        signer: wallet.publicKey,
-        mint: mintKeypair.publicKey,
-        tokenAccount: ata,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(mintTo);
-    await provider.sendAndConfirm(tx);
-
-    console.log(`✅ Fungible token minted ✅`);
-    console.log(
-      `fungible token : https://explorer.solana.com/address/${mintKeypair.publicKey.toBase58()}?cluster=devnet`
-    );
-  });
-
-  it("Mint NFT in your wallet", async () => {
-
     const ata = await getAssociatedTokenAddress(
       mintNFTKeypair.publicKey,
       wallet.publicKey
     );
+    console.log(" ata : ", ata);
 
-    const ataAccountInfo = await connection.getAccountInfo(ata);
+    const [metadataAccount] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        metadataProgramId.toBuffer(),
+        mintNFTKeypair.publicKey.toBuffer(),
+      ],
+      metadataProgramId
+    );
+    console.log("Metadata Account PDA:", metadataAccount.toBase58());
 
-    const tx = new Transaction();
-
-    if (ataAccountInfo === null) {
-       const createAta = createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        ata,
-        wallet.publicKey,
-        mintNFTKeypair.publicKey,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_PROGRAM_ID
-      );
-
-      tx.add(createAta);
-
-    }
+    // Derive the PDA for the Metaplex Master Edition Account
+    const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        metadataProgramId.toBuffer(),
+        mintNFTKeypair.publicKey.toBuffer(),
+        Buffer.from("edition"),
+      ],
+      metadataProgramId
+    );
+    console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
 
     const mintTo = await program.methods
-      .mintToNft()
+      .mintToNft(
+        "SOLNFTT",
+        "SOLSYM",
+        uri,
+        9000,
+        creators,
+        mintNFTCollectionKeypair.publicKey,
+        null,
+        new anchor.BN(0)
+      )
       .accounts({
         signer: wallet.publicKey,
         mint: mintNFTKeypair.publicKey,
         tokenAccount: ata,
+        metadataAccount: metadataAccount,
+        masterEditionAccount: masterEditionAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .instruction();
-
-    tx.add(mintTo);
-
-    console.log(`✅ NFT collection minted ✅`);
-    console.log(
-      ` NFT : https://explorer.solana.com/address/${mintNFTKeypair.publicKey.toBase58()}?cluster=devnet`
-    );
-
-    const masterEdition = await program.methods
-      .masterEdition(null)
-      .accounts({
-        signer: wallet.publicKey,
-        mint: mintNFTKeypair.publicKey,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
         tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
       })
       .instruction();
 
-    tx.add(masterEdition);
-    await provider.sendAndConfirm(tx);
+    tx.add(mintTo);
+    await provider.sendAndConfirm(tx, [mintNFTKeypair]);
+
+    console.log(`✅ NFT minted ✅`);
+    console.log(
+      ` NFT : https://explorer.solana.com/address/${mintNFTKeypair.publicKey.toBase58()}?cluster=devnet`
+    );
   });
 
-  it.skip('create listing', async () => {
-
-    const mintNFTKeypair = new PublicKey("D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH");
+  it.skip("create listing", async () => {
+    const mintNFTKeypair = new PublicKey(
+      "D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH"
+    );
 
     // const wallet = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
 
@@ -445,15 +354,15 @@ describe("create token account", () => {
     const escrowAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       listingPda,
-      true,
+      true
     );
-    console.log("escrow ata", escrowAta)
+    console.log("escrow ata", escrowAta);
 
     const sellerAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       wallet.publicKey
-    )
-    console.log("seller ata", sellerAta)
+    );
+    console.log("seller ata", sellerAta);
     const sellerAccountinfo = await connection.getAccountInfo(sellerAta);
 
     if (sellerAccountinfo === null) {
@@ -462,16 +371,18 @@ describe("create token account", () => {
         sellerAta,
         listingPda,
         mintNFTKeypair
-      )
+      );
       tx.add(createSellerAta);
     }
-    console.log("listing....")
-    const createListing = await program.methods.createListing(new anchor.BN(2_000_000_000))
+    console.log("listing....");
+    const createListing = await program.methods
+      .createListing(new anchor.BN(2_000_000_000))
       .accounts({
         seller: wallet.publicKey,
         mint: mintNFTKeypair,
-        tokenProgram: TOKEN_PROGRAM_ID
-      }).instruction()
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
 
     tx.add(createListing);
     await provider.sendAndConfirm(tx);
@@ -492,11 +403,9 @@ describe("create token account", () => {
       } else {
         console.log("NFT is not in escrow account");
       }
-
     } catch (error) {
       throw error;
     }
-
   });
 
   // it('cancel listing', async () => {
@@ -554,13 +463,16 @@ describe("create token account", () => {
 
   // });
 
-  it.skip(' buy nft ', async () => {
-
-    const mintNFTKeypair = new PublicKey("D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH");
+  it.skip(" buy nft ", async () => {
+    const mintNFTKeypair = new PublicKey(
+      "D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH"
+    );
 
     const tx = new Transaction();
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
+    const buyerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(accountTwoKeypair)
+    );
 
     const [listingPda] = await PublicKey.findProgramAddress(
       [Buffer.from("listing"), mintNFTKeypair.toBuffer()],
@@ -582,22 +494,18 @@ describe("create token account", () => {
 
     const pdaAccountInfo = await connection.getAccountInfo(listingPda);
     if (!pdaAccountInfo) {
-      console.log("NFT IS NOT PRESENT")
+      console.log("NFT IS NOT PRESENT");
     }
 
     const [escrowAtaPda, escrowBump] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from("escrow"),
-        listingPda.toBuffer(),
-        mintNFTKeypair.toBuffer(),
-      ],
+      [Buffer.from("escrow"), listingPda.toBuffer(), mintNFTKeypair.toBuffer()],
       program.programId
     );
 
     const escrowAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       listingPda,
-      true,
+      true
     );
 
     const escrowAccountinfo = await connection.getAccountInfo(escrowAta);
@@ -609,7 +517,7 @@ describe("create token account", () => {
         escrowAta,
         buyerKeypair.publicKey,
         mintNFTKeypair
-      )
+      );
       console.log("createEscrowAta");
       tx.add(createEscrowAta);
       // await provider.sendAndConfirm(tx,[buyerKeypair]);
@@ -620,16 +528,14 @@ describe("create token account", () => {
     const sellerAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       wallet.publicKey
-    )
+    );
     console.log("seller ata", sellerAta);
-
 
     const buyerAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       buyerKeypair.publicKey
-    )
+    );
     console.log("buyer ata", buyerAta);
-
 
     const buyerAccountinfo = await connection.getAccountInfo(buyerAta);
 
@@ -640,11 +546,11 @@ describe("create token account", () => {
         buyerAta,
         buyerKeypair.publicKey,
         mintNFTKeypair
-      )
+      );
       tx.add(createBuyerAta);
       // await provider.sendAndConfirm(tx,[buyerKeypair]);
     }
-    
+
     const asset = await fetchDigitalAsset(umi, publicKey(mintNFTKeypair));
     console.log(asset.metadata.name);
     // console.log(asset);
@@ -653,7 +559,11 @@ describe("create token account", () => {
     console.log("buyer balance : ", buyerBalance);
 
     const creators = asset.metadata?.creators;
-    let remainingAccounts: { pubkey: PublicKey; isWritable: boolean; isSigner: boolean; }[] = [];
+    let remainingAccounts: {
+      pubkey: PublicKey;
+      isWritable: boolean;
+      isSigner: boolean;
+    }[] = [];
 
     if (asset.metadata.creators.__option == "Some") {
       const creators = asset.metadata.creators.value;
@@ -663,25 +573,31 @@ describe("create token account", () => {
         isSigner: false,
       }));
     }
-    
-    const buyNft = await program.methods.buyNft().accounts({
-      seller: wallet.publicKey,
-      buyer: buyerKeypair.publicKey,
-      mint: mintNFTKeypair,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    }).remainingAccounts(remainingAccounts).instruction();
-    
+
+    const buyNft = await program.methods
+      .buyNft()
+      .accounts({
+        seller: wallet.publicKey,
+        buyer: buyerKeypair.publicKey,
+        mint: mintNFTKeypair,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .remainingAccounts(remainingAccounts)
+      .instruction();
+
     tx.add(buyNft);
     console.log("/......./");
     await provider.sendAndConfirm(tx, [buyerKeypair]);
-    
+
     console.log("creators get Royalty ✅");
 
-    console.log("✅ NFT PURCHASED ✅")
-  })
+    console.log("✅ NFT PURCHASED ✅");
+  });
 
   it.skip("create auction", async () => {
-    const mintNFTKeypair  = new PublicKey("8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92");
+    const mintNFTKeypair = new PublicKey(
+      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+    );
 
     // for seller ----------------------------------------------
     const newWalletKeypair = umi.eddsa.createKeypairFromSecretKey(
@@ -735,21 +651,24 @@ describe("create token account", () => {
       .instruction();
 
     tx.add(createAuction);
-    await provider.sendAndConfirm(tx,[]);
+    await provider.sendAndConfirm(tx, []);
 
     console.log("✅ auction created ");
     console.log("Auction initial price");
   });
 
   it.skip("first bid", async () => {
-    const mintNFTKeypair  = new PublicKey("8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92");
-  
+    const mintNFTKeypair = new PublicKey(
+      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+    );
 
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
       new Uint8Array(accountOneKeypair)
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
+    const buyerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(accountOneKeypair)
+    );
 
     const tx = new Transaction();
 
@@ -808,13 +727,17 @@ describe("create token account", () => {
   });
 
   it.skip("second bid", async () => {
-    const mintNFTKeypair  = new PublicKey("8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92");
+    const mintNFTKeypair = new PublicKey(
+      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+    );
 
     const firstBidderbalance = new PublicKey(
       "3U7nN2s3SJ4MZyL52cYPrmoVtCEMxbLef2UKne9nQJHL"
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
+    const buyerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(accountTwoKeypair)
+    );
 
     const tx = new Transaction();
 
@@ -874,14 +797,12 @@ describe("create token account", () => {
     console.log("✅ second Bid Accepted");
   });
 
-  it.skip('cancel auction', async () => {
-
+  it.skip("cancel auction", async () => {
     const mintNFTKeypair = new PublicKey(
       "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
     );
 
     // const wallet = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
-
 
     const tx = new Transaction();
 
@@ -893,19 +814,22 @@ describe("create token account", () => {
     const escrowAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       auctionPda,
-      true,
+      true
     );
 
     const sellerAta = await getAssociatedTokenAddress(
       mintNFTKeypair,
       wallet.publicKey
-    )
+    );
 
-    const cancelListingTx = await program.methods.cancelAuction().accounts({
-      seller: wallet.publicKey,
-      mint: mintNFTKeypair,
-      tokenProgram: TOKEN_PROGRAM_ID,
-    }).instruction();
+    const cancelListingTx = await program.methods
+      .cancelAuction()
+      .accounts({
+        seller: wallet.publicKey,
+        mint: mintNFTKeypair,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
 
     tx.add(cancelListingTx);
     console.log("......//......");
@@ -919,11 +843,10 @@ describe("create token account", () => {
     } else {
       console.log("❌ Listing PDA still exists");
     }
-
   });
 
   it.skip(" winner nft ", async () => {
-     const mintNFkeypair = new PublicKey(
+    const mintNFkeypair = new PublicKey(
       "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
     );
 
@@ -933,7 +856,9 @@ describe("create token account", () => {
       new Uint8Array(accountTwoKeypair)
     );
 
-    const buyerKeypair = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
+    const buyerKeypair = Keypair.fromSecretKey(
+      new Uint8Array(accountTwoKeypair)
+    );
 
     const buyerPublickey = signerKeypair.publicKey;
     console.log("buyer pub key : ", buyerPublickey);
@@ -942,7 +867,6 @@ describe("create token account", () => {
       [Buffer.from("auction"), mintNFkeypair.toBuffer()],
       program.programId
     );
-
 
     const auctionAccount = await program.account.auction.fetch(auctionPda);
 
@@ -998,9 +922,9 @@ describe("create token account", () => {
         mintNFkeypair
       );
       tx.add(createBuyerAta);
-      // await provider.sendAndConfirm(tx,[buyerKeypair]);
+      
     }
-    
+
     const asset = await fetchDigitalAsset(umi, publicKey(mintNFkeypair));
     console.log(asset.metadata.name);
 
@@ -1028,7 +952,7 @@ describe("create token account", () => {
       .accounts({
         seller: wallet.publicKey,
         bidder: buyerKeypair.publicKey,
-        signer:buyerKeypair.publicKey,
+        signer: buyerKeypair.publicKey,
         mint: mintNFkeypair,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
