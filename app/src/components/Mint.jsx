@@ -1,29 +1,38 @@
 import React, { useState, useRef } from "react";
 import toast from "react-hot-toast";
-import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
-// import {
-//   getAssociatedTokenAddress,
-//   getAccount,
-//   createAssociatedTokenAccountInstruction,
-//   ASSOCIATED_TOKEN_PROGRAM_ID,
-// } from "@solana/spl-token";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import {
-  mplTokenMetadata,
-  fetchDigitalAsset,
-  findMetadataPda,
-  MPL_TOKEN_METADATA_PROGRAM_ID,
-} from "@metaplex-foundation/mpl-token-metadata";
-// import { PROGRAM_ID as METAPLEX_METADATA_PROGRAM_ID } from "@metaplex-foundation/mpl-token-metadata";
-// import * as anchor from "@project-serum/anchor";
-import idl from "../../../target/idl/marketplacenft.json";
-import { createGenericFile } from "@metaplex-foundation/umi";
-// import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
-import { AnchorProvider, setProvider } from "@coral-xyz/anchor";
-import { env } from "process";
+  Connection,
+  PublicKey,
+  Transaction,
+  Keypair,
+  SystemProgram,
+} from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
+import idl from "../idl/marketplacenft.json";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { createUmi, createGenericFile } from "@metaplex-foundation/umi";
+import { irysUploader } from "@metaplex-foundation/umi-uploader-irys";
+import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
+import { bundlrUploader } from "@metaplex-foundation/umi-uploader-bundlr";
+import { PinataSDK } from "pinata";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { Buffer } from 'buffer';
+// import { mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";
+
+const pinata = new PinataSDK({
+  pinataJwt:
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJjYjFkY2YxNi0xZThkLTQzMWUtODY0OS02ZWI1ZGU5NmY3MzgiLCJlbWFpbCI6InNoYWt0aWR1YmUwNEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiODMzZWJhYTM0MzdlOTM4YmI3MGQiLCJzY29wZWRLZXlTZWNyZXQiOiJiNWM1ZTJjYWI5NTJiNGJjNDE1YmQwOWE1NWE3YjQ4N2JkMzMwODA3MjA0YzExNzVjMjU1ODAyZDlmNjM2ZGRmIiwiZXhwIjoxNzgzNjg0ODg5fQ.znwjWW5dCcybxih3UKJH1zRuaGz6Z2bFY3ED4NYCI38",
+  pinataGateway: import.meta.env.VITE_GATEWAY_URL,
+});
+console.log("pinata : ", pinata);
+console.log(".....");
+console.log("Loaded IDL:", idl);
 
 const MintNftPage = () => {
-  // const { connection } = useConnection();
-  // const { publicKey, sendTransaction, wallet } = useWallet();
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, wallet, connected } = useWallet(); // Get 'connected' status
+  const { setVisible } = useWalletModal();
 
   // State variables for form inputs
   const [isDragging, setIsDragging] = useState(false);
@@ -41,6 +50,23 @@ const MintNftPage = () => {
   const PROGRAM_ID = new PublicKey(
     "9U1c1CFEyEgEjbrxFcbAymjb4sf8VjiYhm4rYD8Zzszf"
   );
+
+  const metadataProgramId = new PublicKey(
+    "metaqbxxUerdq28cj1RbTFW3DvdbRrVfadqotrsmoBH"
+  );
+
+  const readFileAsUint8Array = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        resolve(new Uint8Array(event.target.result));
+      };
+      reader.onerror = (event) => {
+        reject(event.target.error);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   const validateField = (fieldName, value) => {
     let error = "";
@@ -103,34 +129,121 @@ const MintNftPage = () => {
   const handleMintNft = async (e) => {
     e.preventDefault();
 
+    if (!connected || !publicKey || !wallet) {
+      toast.error(
+        "Wallet not connected. Please connect your wallet to mint an NFT."
+      );
+      setVisible(true);
+      return;
+    }
     if (!validateForm()) {
-      toast.error('Please correct the errors in the form.');
+      toast.error("Please correct the errors in the form.");
       return;
     }
-    if (!publicKey || !connection || !wallet) {
-      toast.error('Wallet not connected or connection not established.');
-      return;
-    }
+
+    const mintNftKeypair = Keypair.generate();
+    console.log("mint nft keypair : ", mintNftKeypair);
+
+    const umi = createUmi("https://api.devnet.solana.com", {
+      commitment: "confirmed",
+    });
+    console.log("umi :", umi);
+
+    umi.use(walletAdapterIdentity(wallet.adapter));
+    // .use(bundlrUploader());
+    // umi.use(irysUploader());
+    // umi.use(mplTokenMetadata())
+
+    umi.uploader = irysUploader();
+
+    const provider = new anchor.AnchorProvider(
+      connection,
+      wallet,
+      anchor.AnchorProvider.defaultOptions()
+    );
+    anchor.setProvider(provider);
+    console.log("Provider initialized:", provider);
+
+    const program = new anchor.Program(idl, provider);
+    console.log("Program initialized:", program);
+    console.log("strat executing t mint try block :");
+    const imageBuffer = await readFileAsUint8Array(nftPhoto);
+    console.log("image buffer : ", imageBuffer);
+    const file = createGenericFile(imageBuffer, nftPhoto.name, {
+      contentType: "img/png",
+    });
+    console.log("file : ", file);
+
+    const upload = await pinata.upload.public.file(nftPhoto);
+    console.log("upload : ", upload);
+
+    const imageUri = `https://gateway.pinata.cloud/ipfs/${upload.cid}`;
+
+    const uri = await pinata.upload.public.json({
+      name: nftName,
+      Symbol: nftSymbol,
+      ImageUri: imageUri,
+      royalty: royalty,
+      maxSupply: maxSupply,
+    });
+    console.log(`https://gateway.pinata.cloud/ipfs/${upload.cid}`);
+    console.log(`https://gateway.pinata.cloud/ipfs/${uri.cid}`);
+
     try {
-        // console.log("mint nft try block start executing");
-        // const provider = anchor.AnchorProvider.env();
-        // provider.opts.commitment = "confirmed";
+      // metadata upoload logic and call mintNft function
 
-        // const connection = provider.connection;
-        // anchor.setProvider(provider);
+      const ata = await getAssociatedTokenAddress(
+        mintNftKeypair.publicKey,
+        wallet.adapter.publicKey
+      );
+      console.log("ATA:", ata.toBase58());
 
-        // const umi = createUmi(connection.rpcEndpoint, {
-        //     commitment: "confirmed",
-        // });
-        // const readFile = fs.readFileSync(nftPhoto);
-        // console.log("read file : ", readFile);
+      const [metadataAccount] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          metadataProgramId.toBuffer(),
+          mintNftKeypair.publicKey.toBuffer(),
+        ],
+        metadataProgramId
+      );
+      console.log("Metadata Account PDA:", metadataAccount.toBase58());
 
-        // let file = createGenericFile(readFile,nftPhoto,{contentType:"img/*"});
-        // console.log("file : ", file);
+      const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          metadataProgramId.toBuffer(),
+          mintNftKeypair.publicKey.toBuffer(),
+          Buffer.from("edition"),
+        ],
+        metadataProgramId
+      );
+      console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
 
-        // const [imageUri] = await 
+      const mintTo = await program.methods
+        .mintToNft(
+          nftName,
+          nftSymbol,
+          uri,
+          royalty,
+          creators,
+          null,
+          null,
+          maxSupply
+        )
+        .accounts({
+          signer: wallet.adapter.publicKey,
+          mint: mintNftKeypair.publicKey,
+          tokenProgram: idl.address,
+          metadataAccount: metadataAccount,
+          masterEditionAccount: masterEditionAccount,
+          systemProgram: SystemProgram.programId,
+          tokenMetadataProgram: metadataProgramId,
+          associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+          associatedTokenAccount: ata,
+        })
+        .rpc();
     } catch (error) {
-        toast.error(`Error minting NFT: ${error.message || error.toString()}`)
+      toast.error(`Error minting NFT: ${error.message || error.toString()}`);
     }
   };
   const handleDragOver = (e) => {
@@ -251,7 +364,6 @@ const MintNftPage = () => {
               onChange={handleFileChange}
               ref={fileInputRef}
               className="hidden"
-              required
             />
           </div>
         </div>
@@ -276,16 +388,15 @@ const MintNftPage = () => {
               setNftName(e.target.value);
               setErrors((prev) => ({ ...prev, nftName: "" }));
             }} // Clear error on change
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                nftName: validateField("nftName", e.target.value),
-              }))
-            } // Validate on blur
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     nftName: validateField("nftName", e.target.value),
+            //   }))
+            // } // Validate on blur
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.nftName ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., My Awesome NFT"
-            required
           />
         </div>
 
@@ -309,16 +420,15 @@ const MintNftPage = () => {
               setNftSymbol(e.target.value);
               setErrors((prev) => ({ ...prev, nftSymbol: "" }));
             }}
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                nftSymbol: validateField("nftSymbol", e.target.value),
-              }))
-            }
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     nftSymbol: validateField("nftSymbol", e.target.value),
+            //   }))
+            // }
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.nftSymbol ? "border-red-500" : "border-gray-600"}`}
-            placeholder="e.g., MANFT"
-            required
+            placeholder=" e.g., MANFT"
           />
         </div>
 
@@ -342,19 +452,17 @@ const MintNftPage = () => {
               setRoyalty(e.target.value);
               setErrors((prev) => ({ ...prev, royalty: "" }));
             }}
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                royalty: validateField("royalty", e.target.value),
-              }))
-            }
-            min="0"
-            max="100"
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     royalty: validateField("royalty", e.target.value),
+            //   }))
+            // }
+
             step="0.01"
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.royalty ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., 5"
-            required
           />
         </div>
 
@@ -379,16 +487,15 @@ const MintNftPage = () => {
               setCreators(e.target.value);
               setErrors((prev) => ({ ...prev, creators: "" }));
             }}
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                creators: validateField("creators", e.target.value),
-              }))
-            }
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     creators: validateField("creators", e.target.value),
+            //   }))
+            // }
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.creators ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., Addr1,Addr2"
-            required
           />
         </div>
 
@@ -412,12 +519,12 @@ const MintNftPage = () => {
               setCollectionMint(e.target.value);
               setErrors((prev) => ({ ...prev, collectionMint: "" }));
             }}
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                collectionMint: validateField("collectionMint", e.target.value),
-              }))
-            }
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     collectionMint: validateField("collectionMint", e.target.value),
+            //   }))
+            // }
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.collectionMint ? "border-red-500" : "border-gray-600"}`}
             placeholder="Optional: Collection Mint Address"
@@ -461,17 +568,16 @@ const MintNftPage = () => {
               setMaxSupply(e.target.value);
               setErrors((prev) => ({ ...prev, maxSupply: "" }));
             }}
-            onBlur={(e) =>
-              setErrors((prev) => ({
-                ...prev,
-                maxSupply: validateField("maxSupply", e.target.value),
-              }))
-            }
+            // onBlur={(e) =>
+            //   setErrors((prev) => ({
+            //     ...prev,
+            //     maxSupply: validateField("maxSupply", e.target.value),
+            //   }))
+            // }
             min="1"
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.maxSupply ? "border-red-500" : "border-gray-600"}`}
-            placeholder="e.g., 1"
-            required
+            placeholder=" e.g., 1"
           />
         </div>
 
@@ -480,6 +586,7 @@ const MintNftPage = () => {
           <button
             type="submit"
             className="bg-gradient-to-r from-purple-600 to-indigo-700 text-white font-extrabold py-4 px-12 rounded-full shadow-xl hover:from-purple-700 hover:to-indigo-800 transition duration-300 transform hover:scale-105 text-xl tracking-wide animate-pulse-on-hover"
+            // disabled={!wallet || !wallet.publicKey}
           >
             Mint NFT
           </button>
