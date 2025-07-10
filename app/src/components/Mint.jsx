@@ -186,6 +186,8 @@ const MintNftPage = () => {
       royalty: royalty,
       maxSupply: maxSupply,
     });
+    const metadataUri =`https://gateway.pinata.cloud/ipfs/${uri.cid}`;
+
     console.log(`https://gateway.pinata.cloud/ipfs/${upload.cid}`);
     console.log(`https://gateway.pinata.cloud/ipfs/${uri.cid}`);
 
@@ -196,54 +198,65 @@ const MintNftPage = () => {
         mintNftKeypair.publicKey,
         wallet.adapter.publicKey
       );
-      console.log("ATA:", ata.toBase58());
+      // console.log("ATA:", ata.toBase58());
 
-      const [metadataAccount] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("metadata"),
-          metadataProgramId.toBuffer(),
-          mintNftKeypair.publicKey.toBuffer(),
-        ],
-        metadataProgramId
-      );
-      console.log("Metadata Account PDA:", metadataAccount.toBase58());
+      // const [metadataAccount] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     metadataProgramId.toBuffer(),
+      //     mintNftKeypair.publicKey.toBuffer(),
+      //   ],
+      //   metadataProgramId
+      // );
+      // console.log("Metadata Account PDA:", metadataAccount.toBase58());
 
-      const [masterEditionAccount] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("metadata"),
-          metadataProgramId.toBuffer(),
-          mintNftKeypair.publicKey.toBuffer(),
-          Buffer.from("edition"),
-        ],
-        metadataProgramId
-      );
-      console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
+      // const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     metadataProgramId.toBuffer(),
+      //     mintNftKeypair.publicKey.toBuffer(),
+      //     Buffer.from("edition"),
+      //   ],
+      //   metadataProgramId
+      // );
+      // console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
+
+      const creators = [
+          {
+              address: wallet.publicKey, // Or another PublicKey
+              share: 100, // Percentage share, sum for all creators must be 100
+              verified: false, // Usually false initially, set to true after signing
+          }
+          
+      ];
 
       const mintTo = await program.methods
         .mintToNft(
           nftName,
           nftSymbol,
-          uri,
-          royalty,
-          creators,
+          metadataUri,
+          9000,
           null,
           null,
-          maxSupply
+          null,
+          null
         )
         .accounts({
           signer: wallet.adapter.publicKey,
           mint: mintNftKeypair.publicKey,
           tokenProgram: idl.address,
-          metadataAccount: metadataAccount,
-          masterEditionAccount: masterEditionAccount,
-          systemProgram: SystemProgram.programId,
-          tokenMetadataProgram: metadataProgramId,
-          associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-          associatedTokenAccount: ata,
-        })
-        .rpc();
+          tokenAccount: ata,
+        }).instruction()
+        const transaction = new Transaction();
+        transaction.add(mintTo)
+        const tx = await provider.sendAndConfirm(transaction);
+        console.log(tx);
+
+
+        console.log("mint to : ",mintTo);
     } catch (error) {
       toast.error(`Error minting NFT: ${error.message || error.toString()}`);
+      console.log(`Error minting NFT: ${error}`);
     }
   };
   const handleDragOver = (e) => {
