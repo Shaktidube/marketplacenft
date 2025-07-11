@@ -7,6 +7,7 @@ import Mint from './Mint';
 import BuySell from './BuySell';
 import Auction from './Auction';
 import Sidebar from './SideBar';
+import LiveSell from './LiveSell';
 
 const Marketplace = () => {
   const { publicKey, connected, disconnect } = useWallet();
@@ -79,6 +80,7 @@ const Marketplace = () => {
             <Route path="mint" element={<Mint />} />
             <Route path="buy-sell" element={<BuySell />} />
             <Route path="auction" element={<Auction />} />
+            <Route path="live-sell" element={<LiveSell />} />
             
           </Routes>
           <Outlet /> 

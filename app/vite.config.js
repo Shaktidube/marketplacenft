@@ -9,6 +9,7 @@ import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfil
 export default defineConfig({
   plugins: [react(),tailwindcss(),],
   optimizeDeps: {
+    include: ['@metaplex-foundation/js'],
     esbuildOptions: {
       define: {
         global: 'globalThis', // also necessary for other polyfills
@@ -18,6 +19,7 @@ export default defineConfig({
           buffer: true,
         }),
       ],
+      
     },
   },
 });

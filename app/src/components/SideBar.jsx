@@ -33,6 +33,14 @@ const Sidebar = () => {
               <span className="absolute bottom-0 left-0 w-0 h-0.75 bg-indigo-400 transition-all duration-300 group-hover:w-full group-hover:scale-x-100 origin-left"></span>
             </NavLink>
           </li>
+          {/* NEW LIVE SALES LINK */}
+          <li className='mb-5 group'>
+            <NavLink to="/marketplace/live-sell" className={linkClasses}>
+              <svg className="w-7 h-7 mr-4 text-indigo-300 group-hover:text-blue-100 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg> {/* Example icon: Lightning bolt */}
+              Live Sales
+              <span className="absolute bottom-0 left-0 w-0 h-0.75 bg-indigo-400 transition-all duration-300 group-hover:w-full group-hover:scale-x-100 origin-left"></span>
+            </NavLink>
+          </li>
           <li className='mb-5 group'>
             <NavLink to="/marketplace/auction" className={linkClasses}>
               <svg className="w-7 h-7 mr-4 text-indigo-300 group-hover:text-blue-100 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197 3.197m0 0l-3.197-3.197m3.197 3.197v4.5m0 0H5.5m9 0h-9m11.5-6.5a7 7 0 10-14 0 7 7 0 0014 0z"></path></svg>
