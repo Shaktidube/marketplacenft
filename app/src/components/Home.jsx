@@ -1,27 +1,23 @@
-import React, { useState,useEffect } from 'react'; // Import useState
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
-
 const Home = () => {
   const { publicKey, connected, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
-
   const navigate = useNavigate();
 
   const [isHovered, setIsHovered] = useState(false);
 
-  console.log("Home.jsx is rendering. Connected:", connected);
-
   useEffect(() => {
-    if(connected && publicKey){
-      console.log("redirecting to marketplace page");
+    // Redirect to marketplace if connected
+    if (connected && publicKey) {
+      console.log("Wallet connected, redirecting to marketplace page.");
       navigate('/marketplace');
     }
-  }, [connected,publicKey,navigate]);
-  
+  }, [connected, publicKey, navigate]);
 
   const handleWalletAction = async () => {
     if (connected) {
@@ -34,7 +30,7 @@ const Home = () => {
       }
     } else {
       setVisible(true);
-      toast('Please select wallet');
+      // Removed the toast here as the wallet modal typically has its own feedback
     }
   };
 
@@ -47,17 +43,48 @@ const Home = () => {
   };
 
   return (
-    <div className='bg-black h-screen w-screen flex flex-col justify-center items-center'>
-        <p className='font-bold text-white align-middle text-center'>Welcome to Nft marketplace</p>
+    // Dynamic gradient background with subtle animation
+    <div className='min-h-screen w-screen flex flex-col justify-center items-center bg-gradient-to-br from-gray-900 via-indigo-950 to-purple-950 animate-gradient-shift'>
+      <div className="relative z-10 flex flex-col items-center p-8 bg-gray-900/40 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-700/50">
+        <h1 className='text-5xl md:text-6xl font-extrabold text-white mb-6 text-center tracking-tight drop-shadow-lg animate-fade-in-up'>
+          Welcome to <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Solana Marketplace</span>
+        </h1>
+        <p className='text-lg md:text-xl text-gray-200 text-center max-w-2xl mb-10 opacity-0 animate-fade-in delay-200'>
+          Your gateway to creating, trading, and experiencing unique digital assets on the Solana blockchain.
+        </p>
 
         <button
           onClick={handleWalletAction}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          className='bg-black border-2 mt-2 p-4 text-center rounded-md font-bold from-purple-600 via-pink-400 to-blue-600 bg-gradient-to-r bg-clip-text text-transparent border-amber-50 hover:border-2  hover:border-gray-500 hover:text-white transition duration-300'
+          className='
+            relative
+            px-8 py-4 rounded-full
+            font-bold text-lg
+            bg-gradient-to-br from-blue-500 to-purple-600
+            text-white
+            shadow-lg
+            hover:shadow-2xl
+            transform hover:scale-105
+            transition-all duration-300 ease-in-out
+            overflow-hidden
+            group
+            border border-transparent
+            animate-fade-in delay-400
+          '
         >
+          {/* Subtle glow effect on hover for the button */}
+          <span className="absolute inset-0 bg-white opacity-0 transition-opacity duration-300 group-hover:opacity-10"></span>
           {getButtonText()}
         </button>
+      </div>
+
+      {/* Optional: Add some background particles/shapes for extra flair */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
+        <div className="absolute w-24 h-24 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob top-1/4 left-1/4"></div>
+        <div className="absolute w-32 h-32 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000 bottom-1/3 right-1/4"></div>
+        <div className="absolute w-28 h-28 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+      </div>
     </div>
   );
 };

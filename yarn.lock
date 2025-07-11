@@ -756,12 +756,12 @@
   dependencies:
     "@solana/errors" "2.0.0-rc.1"
 
-"@solana/codecs-core@2.1.1":
-  version "2.1.1"
-  resolved "https://registry.npmjs.org/@solana/codecs-core/-/codecs-core-2.1.1.tgz"
-  integrity sha512-iPQW3UZ2Vi7QFBo2r9tw0NubtH8EdrhhmZulx6lC8V5a+qjaxovtM/q/UW2BTNpqqHLfO0tIcLyBLrNH4HTWPg==
+"@solana/codecs-core@2.2.1":
+  version "2.2.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-core/-/codecs-core-2.2.1.tgz"
+  integrity sha512-ZW1kTmvqhQhk/jMDo7wZgApn1Lf+d3AecHF6bcWPVSr+KlGLtWZL0wcP+0tnsncPhvG28pZxRR57f4TUylSA7Q==
   dependencies:
-    "@solana/errors" "2.1.1"
+    "@solana/errors" "2.2.1"
 
 "@solana/codecs-data-structures@2.0.0-rc.1":
   version "2.0.0-rc.1"
@@ -773,12 +773,12 @@
     "@solana/errors" "2.0.0-rc.1"
 
 "@solana/codecs-numbers@^2.1.0":
-  version "2.1.1"
-  resolved "https://registry.npmjs.org/@solana/codecs-numbers/-/codecs-numbers-2.1.1.tgz"
-  integrity sha512-m20IUPJhPUmPkHSlZ2iMAjJ7PaYUvlMtFhCQYzm9BEBSI6OCvXTG3GAPpAnSGRBfg5y+QNqqmKn4QHU3B6zzCQ==
+  version "2.2.1"
+  resolved "https://registry.npmjs.org/@solana/codecs-numbers/-/codecs-numbers-2.2.1.tgz"
+  integrity sha512-qlJHWZFGzhMa7R6EZXNM/ycINGrR4lzBQjwFMs2pXnCxqKTI3Vru0f4kSh0qqf6U1bjNLaYXTMniqETX6ANpzg==
   dependencies:
-    "@solana/codecs-core" "2.1.1"
-    "@solana/errors" "2.1.1"
+    "@solana/codecs-core" "2.2.1"
+    "@solana/errors" "2.2.1"
 
 "@solana/codecs-numbers@2.0.0-rc.1":
   version "2.0.0-rc.1"
@@ -816,10 +816,10 @@
     chalk "^5.3.0"
     commander "^12.1.0"
 
-"@solana/errors@2.1.1":
-  version "2.1.1"
-  resolved "https://registry.npmjs.org/@solana/errors/-/errors-2.1.1.tgz"
-  integrity sha512-sj6DaWNbSJFvLzT8UZoabMefQUfSW/8tXK7NTiagsDmh+Q87eyQDDC9L3z+mNmx9b6dEf6z660MOIplDD2nfEw==
+"@solana/errors@2.2.1":
+  version "2.2.1"
+  resolved "https://registry.npmjs.org/@solana/errors/-/errors-2.2.1.tgz"
+  integrity sha512-BiCivvqhNsg5BiWTshsRwGC/866ycfAxj/KMV+uH9pKohXyEENXedgj6U3fAIJiJLdSFya61CLl2EnDygnUPBg==
   dependencies:
     chalk "^5.4.1"
     commander "^13.1.0"
@@ -904,6 +904,11 @@
   version "4.3.20"
   resolved "https://registry.npmjs.org/@types/chai/-/chai-4.3.20.tgz"
   integrity sha512-/pC9HAB5I/xMlc5FP77qjCnI16ChlJfW0tGa0IUcFn38VJrTV6DeZ60NU5KZBtaOZqjdpwTWohz5HU1RrhiYxQ==
+
+"@types/chalk@^0.4.31":
+  version "0.4.31"
+  resolved "https://registry.npmjs.org/@types/chalk/-/chalk-0.4.31.tgz"
+  integrity sha512-nF0fisEPYMIyfrFgabFimsz9Lnuu9MwkNrrlATm2E4E46afKDyeelT+8bXfw1VSc7sLBxMxRgT7PxTC2JcqN4Q==
 
 "@types/connect@^3.4.33":
   version "3.4.38"
@@ -1433,6 +1438,11 @@ concat-map@0.0.1:
   version "0.0.1"
   resolved "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz"
   integrity sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==
+
+cookie@^1.0.1:
+  version "1.0.2"
+  resolved "https://registry.npmjs.org/cookie/-/cookie-1.0.2.tgz"
+  integrity sha512-9Kr/j4O16ISv8zBBhJoi4bXOYNTkFLOqSL3UDB0njXxCXNezjeyVrJyGOWtgfs/q2km1gwBcfH8q1yEGoMYunA==
 
 cross-fetch@^3.1.5:
   version "3.2.0"
@@ -2370,6 +2380,33 @@ randombytes@^2.1.0:
   dependencies:
     safe-buffer "^5.1.0"
 
+react-dom@>=18:
+  version "19.1.0"
+  resolved "https://registry.npmjs.org/react-dom/-/react-dom-19.1.0.tgz"
+  integrity sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==
+  dependencies:
+    scheduler "^0.26.0"
+
+react-router-dom@^7.6.3:
+  version "7.6.3"
+  resolved "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.6.3.tgz"
+  integrity sha512-DiWJm9qdUAmiJrVWaeJdu4TKu13+iB/8IEi0EW/XgaHCjW/vWGrwzup0GVvaMteuZjKnh5bEvJP/K0MDnzawHw==
+  dependencies:
+    react-router "7.6.3"
+
+react-router@7.6.3:
+  version "7.6.3"
+  resolved "https://registry.npmjs.org/react-router/-/react-router-7.6.3.tgz"
+  integrity sha512-zf45LZp5skDC6I3jDLXQUu0u26jtuP4lEGbc7BbdyxenBN1vJSTA18czM2D+h5qyMBuMrD+9uB+mU37HIoKGRA==
+  dependencies:
+    cookie "^1.0.1"
+    set-cookie-parser "^2.6.0"
+
+react@^19.1.0, react@>=18:
+  version "19.1.0"
+  resolved "https://registry.npmjs.org/react/-/react-19.1.0.tgz"
+  integrity sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==
+
 readable-stream@^3.4.0, readable-stream@^3.6.0:
   version "3.6.2"
   resolved "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz"
@@ -2462,6 +2499,11 @@ safer-buffer@^2.1.0, "safer-buffer@>= 2.1.2 < 3":
   resolved "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz"
   integrity sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==
 
+scheduler@^0.26.0:
+  version "0.26.0"
+  resolved "https://registry.npmjs.org/scheduler/-/scheduler-0.26.0.tgz"
+  integrity sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA==
+
 scrypt-js@3.0.1:
   version "3.0.1"
   resolved "https://registry.npmjs.org/scrypt-js/-/scrypt-js-3.0.1.tgz"
@@ -2483,7 +2525,7 @@ serialize-javascript@6.0.0:
   dependencies:
     randombytes "^2.1.0"
 
-set-cookie-parser@^2.4.8:
+set-cookie-parser@^2.4.8, set-cookie-parser@^2.6.0:
   version "2.7.1"
   resolved "https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.1.tgz"
   integrity sha512-IOc8uWeOZgnb3ptbCURJWNjWUPcO3ZnTTdzsurqERrP6nPyv+paC55vJM0LpOlT2ne+Ix+9+CRG1MNLlyZ4GjQ==

@@ -111,7 +111,7 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
     let creators = metadata_account.creators;
 
     if let Some(creators_vec) = creators {
-        let buyer_info = ctx.accounts.buyer.to_account_info().clone();
+        // let buyer_info = ctx.accounts.buyer.to_account_info();
         // let remaining_account = &ctx.remaining_accounts;
 
         for creator in creators_vec.iter() {
@@ -127,7 +127,7 @@ pub fn buy_nft<'info>(ctx: Context<'_, '_, '_, 'info, BuyNft<'info>>) -> Result<
                         );
 
                         let cpi_accounts = Transfer {
-                            from: buyer_info.clone(),
+                            from: ctx.accounts.buyer.to_account_info(),
                             to: ctx.remaining_accounts[account_index].to_account_info(),
                         };
 

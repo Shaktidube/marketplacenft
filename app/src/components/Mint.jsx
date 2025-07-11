@@ -16,7 +16,7 @@ import { irysUploader } from "@metaplex-foundation/umi-uploader-irys";
 import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
 import { bundlrUploader } from "@metaplex-foundation/umi-uploader-bundlr";
 import { PinataSDK } from "pinata";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Buffer } from 'buffer';
 // import { mplTokenMetadata } from "@metaplex-foundation/mpl-token-metadata";
 
@@ -158,7 +158,7 @@ const MintNftPage = () => {
 
     const provider = new anchor.AnchorProvider(
       connection,
-      wallet,
+      wallet.adapter,
       anchor.AnchorProvider.defaultOptions()
     );
     anchor.setProvider(provider);
@@ -191,51 +191,22 @@ const MintNftPage = () => {
     console.log(`https://gateway.pinata.cloud/ipfs/${upload.cid}`);
     console.log(`https://gateway.pinata.cloud/ipfs/${uri.cid}`);
 
+    const actualRoyalty = typeof royalty === 'string' ? Number(royalty) : royalty;
+    
+
     try {
-      // metadata upoload logic and call mintNft function
 
       const ata = await getAssociatedTokenAddress(
         mintNftKeypair.publicKey,
         wallet.adapter.publicKey
       );
-      // console.log("ATA:", ata.toBase58());
 
-      // const [metadataAccount] = PublicKey.findProgramAddressSync(
-      //   [
-      //     Buffer.from("metadata"),
-      //     metadataProgramId.toBuffer(),
-      //     mintNftKeypair.publicKey.toBuffer(),
-      //   ],
-      //   metadataProgramId
-      // );
-      // console.log("Metadata Account PDA:", metadataAccount.toBase58());
-
-      // const [masterEditionAccount] = PublicKey.findProgramAddressSync(
-      //   [
-      //     Buffer.from("metadata"),
-      //     metadataProgramId.toBuffer(),
-      //     mintNftKeypair.publicKey.toBuffer(),
-      //     Buffer.from("edition"),
-      //   ],
-      //   metadataProgramId
-      // );
-      // console.log("Master Edition Account PDA:", masterEditionAccount.toBase58());
-
-      const creators = [
-          {
-              address: wallet.publicKey, // Or another PublicKey
-              share: 100, // Percentage share, sum for all creators must be 100
-              verified: false, // Usually false initially, set to true after signing
-          }
-          
-      ];
-
-      const mintTo = await program.methods
+     const mintTo = await program.methods
         .mintToNft(
           nftName,
           nftSymbol,
           metadataUri,
-          9000,
+          parseFloat(royalty),
           null,
           null,
           null,
@@ -244,16 +215,29 @@ const MintNftPage = () => {
         .accounts({
           signer: wallet.adapter.publicKey,
           mint: mintNftKeypair.publicKey,
-          tokenProgram: idl.address,
+          tokenProgram: TOKEN_PROGRAM_ID,
           tokenAccount: ata,
         }).instruction()
+
         const transaction = new Transaction();
-        transaction.add(mintTo)
-        const tx = await provider.sendAndConfirm(transaction);
-        console.log(tx);
+        transaction.add(mintTo);
 
+        transaction.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+        transaction.feePayer = wallet.adapter.publicKey;
 
+        const signedTx = await wallet.adapter.signTransaction(transaction);
+        signedTx.partialSign(mintNftKeypair); 
+
+        const txSig = await provider.connection.sendRawTransaction(signedTx.serialize());
+        await provider.connection.confirmTransaction(txSig, "confirmed");
+
+        console.log("TX Signature:", txSig);
+      
         console.log("mint to : ",mintTo);
+
+        toast.success("mint nft successfully")
+
+     
     } catch (error) {
       toast.error(`Error minting NFT: ${error.message || error.toString()}`);
       console.log(`Error minting NFT: ${error}`);
@@ -389,9 +373,7 @@ const MintNftPage = () => {
           >
             NFT Name <span className="text-red-400">*</span>
           </label>
-          {errors.nftName && (
-            <p className="text-red-400 text-xs mb-1">{errors.nftName}</p>
-          )}{" "}
+          
           {/* Error message */}
           <input
             type="text"
@@ -411,6 +393,9 @@ const MintNftPage = () => {
               ${errors.nftName ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., My Awesome NFT"
           />
+          {errors.nftName && (
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.nftName}</p>
+          )}{" "}
         </div>
 
         {/* NFT Symbol */}
@@ -421,9 +406,7 @@ const MintNftPage = () => {
           >
             NFT Symbol <span className="text-red-400">*</span>
           </label>
-          {errors.nftSymbol && (
-            <p className="text-red-400 text-xs mb-1">{errors.nftSymbol}</p>
-          )}{" "}
+          
           {/* Error message */}
           <input
             type="text"
@@ -443,6 +426,9 @@ const MintNftPage = () => {
               ${errors.nftSymbol ? "border-red-500" : "border-gray-600"}`}
             placeholder=" e.g., MANFT"
           />
+          {errors.nftSymbol && (
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.nftSymbol}</p>
+          )}{" "}
         </div>
 
         {/* Royalty */}
@@ -453,9 +439,7 @@ const MintNftPage = () => {
           >
             Royalty (%) <span className="text-red-400">*</span>
           </label>
-          {errors.royalty && (
-            <p className="text-red-400 text-xs mb-1">{errors.royalty}</p>
-          )}{" "}
+          
           {/* Error message */}
           <input
             type="number"
@@ -477,6 +461,9 @@ const MintNftPage = () => {
               ${errors.royalty ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., 5"
           />
+          {errors.royalty && (
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.royalty}</p>
+          )}{" "}
         </div>
 
         {/* Creators */}
@@ -488,9 +475,7 @@ const MintNftPage = () => {
             Creators (Comma-separated addresses){" "}
             <span className="text-red-400">*</span>
           </label>
-          {errors.creators && (
-            <p className="text-red-400 text-xs mb-1">{errors.creators}</p>
-          )}{" "}
+          
           {/* Error message */}
           <input
             type="text"
@@ -510,6 +495,9 @@ const MintNftPage = () => {
               ${errors.creators ? "border-red-500" : "border-gray-600"}`}
             placeholder="e.g., Addr1,Addr2"
           />
+          {errors.creators && (
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.creators}</p>
+          )}{" "}
         </div>
 
         {/* Collection Mint Address */}
@@ -521,7 +509,7 @@ const MintNftPage = () => {
             Collection Mint Address
           </label>
           {errors.collectionMint && (
-            <p className="text-red-400 text-xs mb-1">{errors.collectionMint}</p>
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.collectionMint}</p>
           )}{" "}
           {/* Error message */}
           <input
@@ -569,9 +557,7 @@ const MintNftPage = () => {
           >
             Max Supply <span className="text-red-400">*</span>
           </label>
-          {errors.maxSupply && (
-            <p className="text-red-400 text-xs mb-1">{errors.maxSupply}</p>
-          )}{" "}
+          
           {/* Error message */}
           <input
             type="number"
@@ -592,6 +578,9 @@ const MintNftPage = () => {
               ${errors.maxSupply ? "border-red-500" : "border-gray-600"}`}
             placeholder=" e.g., 1"
           />
+          {errors.maxSupply && (
+            <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.maxSupply}</p>
+          )}{" "}
         </div>
 
         {/* Submit Button */}

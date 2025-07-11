@@ -1,4 +1,4 @@
-import * as anchor from "@coral-xyz/anchor"; // Changed from anchor1 to anchor
+import * as anchor from "@coral-xyz/anchor"; 
 import { Marketplacenft } from "../target/types/marketplacenft";
 import {
   getAssociatedTokenAddress,
@@ -32,8 +32,6 @@ import {
 } from "@metaplex-foundation/mpl-token-metadata";
 
 import fs, { readFileSync } from "fs";
-import chalk from "chalk";
-import figlet from "figlet";
 
 
 const metadataProgramId = new PublicKey(
@@ -74,12 +72,14 @@ describe("create token account", () => {
   console.log("fungible mint publickey : ",mintKeypair.publicKey);
 
   const mintNFTKeypair = Keypair.generate();
-  console.log("nft keypair", mintKeypair.publicKey);
+  console.log("nft keypair", mintNFTKeypair.publicKey);
 
   const mintNFTCollectionKeypair = Keypair.generate();
-  console.log("colection nft keypair  : ",mintKeypair.publicKey);
+  console.log("colection nft keypair  : ",mintNFTCollectionKeypair.publicKey);
 
-  it.only("mint tokens in your wallet", async () => {
+  it("mint tokens in your wallet", async () => {
+
+    console.log("💡 mint tokens in your wallet is start 💡");
     const tx = new Transaction();
 
     const ata = await getAssociatedTokenAddress(
@@ -111,7 +111,10 @@ describe("create token account", () => {
   });
 
 
-  it.only("Collection NFT", async () => {
+  it("Collection NFT", async () => {
+
+    console.log("💡 Collection NFT Start 💡");
+
     const privatekey = [
       114, 49, 53, 106, 200, 43, 202, 124, 37, 57, 17, 15, 229, 213, 130, 84,
       161, 232, 108, 207, 147, 76, 213, 136, 205, 209, 143, 194, 142, 192, 90,
@@ -204,13 +207,7 @@ describe("create token account", () => {
       .accounts({
         signer: wallet.publicKey,
         mint: mintNFTCollectionKeypair.publicKey,
-        tokenAccount: ata,
-        metadataAccount: metadataAccount,
-        masterEditionAccount: masterEditionAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
       })
       .instruction();
 
@@ -224,7 +221,10 @@ describe("create token account", () => {
     );
   });
 
-  it.only("Mint NFT in your wallet", async () => {
+  it("Mint NFT in your wallet", async () => {
+
+    console.log("💡 Mint NFT in your wallet 💡");
+
     const tx = new Transaction();
 
     const privatekey = [
@@ -315,13 +315,7 @@ describe("create token account", () => {
       .accounts({
         signer: wallet.publicKey,
         mint: mintNFTKeypair.publicKey,
-        tokenAccount: ata,
-        metadataAccount: metadataAccount,
-        masterEditionAccount: masterEditionAccount,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        tokenMetadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID
       })
       .instruction();
 
@@ -336,10 +330,10 @@ describe("create token account", () => {
 
   it.skip("create listing", async () => {
     const mintNFTKeypair = new PublicKey(
-      "D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH"
+      "8b7jb8jikcgw1DaEsfW8da7SnSRMppk81zTRYKVksmEH"
     );
 
-    // const wallet = Keypair.fromSecretKey(new Uint8Array(accountOneKeypair));
+    const wallet = Keypair.fromSecretKey(new Uint8Array(accountTwoKeypair));
 
     const tx = new Transaction();
 
@@ -385,7 +379,7 @@ describe("create token account", () => {
       .instruction();
 
     tx.add(createListing);
-    await provider.sendAndConfirm(tx);
+    await provider.sendAndConfirm(tx,[wallet]);
 
     console.log("✅ NFT listed successfully. Tx:");
 
@@ -465,13 +459,13 @@ describe("create token account", () => {
 
   it.skip(" buy nft ", async () => {
     const mintNFTKeypair = new PublicKey(
-      "D7UXNLoyCt6p6QXp7f9DcFJW2RiHLRqYiX87DQBpKYTH"
+      "8b7jb8jikcgw1DaEsfW8da7SnSRMppk81zTRYKVksmEH"
     );
 
     const tx = new Transaction();
 
     const buyerKeypair = Keypair.fromSecretKey(
-      new Uint8Array(accountTwoKeypair)
+      new Uint8Array(accountOneKeypair)
     );
 
     const [listingPda] = await PublicKey.findProgramAddress(
