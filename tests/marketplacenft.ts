@@ -590,7 +590,7 @@ describe("create token account", () => {
 
   it.skip("create auction", async () => {
     const mintNFTKeypair = new PublicKey(
-      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+      "EJAdeA1b4ftJvsgVJ28X7Ci51FP5US4NG7Kc8uudr3i8"
     );
 
     // for seller ----------------------------------------------
@@ -624,7 +624,7 @@ describe("create token account", () => {
       tx.add(createSellerAta);
     }
 
-    const startTime = new anchor.BN(1751891830);
+    const startTime = new anchor.BN(1752573484);
     console.log("start time : ", startTime.toString());
 
     const initialPrice = new anchor.BN(100000000);
@@ -653,7 +653,7 @@ describe("create token account", () => {
 
   it.skip("first bid", async () => {
     const mintNFTKeypair = new PublicKey(
-      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+      "EJAdeA1b4ftJvsgVJ28X7Ci51FP5US4NG7Kc8uudr3i8"
     );
 
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
@@ -700,7 +700,7 @@ describe("create token account", () => {
     ];
 
     const makeBid = await program.methods
-      .placeBid(new anchor.BN(1000000000))
+      .placeBid(new anchor.BN(1000000001))
       .accounts({
         bidder: buyerKeypair.publicKey,
         nftMint: mintNFTKeypair,
@@ -722,7 +722,7 @@ describe("create token account", () => {
 
   it.skip("second bid", async () => {
     const mintNFTKeypair = new PublicKey(
-      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+      "EJAdeA1b4ftJvsgVJ28X7Ci51FP5US4NG7Kc8uudr3i8"
     );
 
     const firstBidderbalance = new PublicKey(
@@ -769,7 +769,7 @@ describe("create token account", () => {
     ];
 
     const makeBid = await program.methods
-      .placeBid(new anchor.BN(2000000000))
+      .placeBid(new anchor.BN(1000000000))
       .accounts({
         bidder: buyerKeypair.publicKey,
         nftMint: mintNFTKeypair,
@@ -1007,4 +1007,5 @@ describe("create token account", () => {
       throw error;
     }
   });
+
 });

@@ -15,15 +15,15 @@ export const WalletConnectionProvider = ({ children }) => {
   console.log("WalletConnectionProvider is rendering.");
 
   const endpoint = useMemo(() => 'https://api.devnet.solana.com', []);
-  const wallets = useMemo(() => [
-    new SolflareWalletAdapter(),
-  ], []);
+  // const wallets = useMemo(() => [
+  //   new SolflareWalletAdapter(),
+  // ], []);
 
-  console.log("Wallets being provided:", wallets);
+  // console.log("Wallets being provided:", wallets);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={[]} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

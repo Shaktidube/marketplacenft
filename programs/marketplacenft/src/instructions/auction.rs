@@ -399,7 +399,7 @@ pub fn cancel_auction(ctx:Context<CancelAuction>)  ->Result<()> {
     // let bid_pda = &ctx.accounts.bid_pda;
     let current_timestamp =  ctx.accounts.clock.unix_timestamp;
     
-    require!(current_timestamp >= auction.end_time ,AuctionErrorCode::AuctionIsActive);
+    require!(current_timestamp > auction.end_time ,AuctionErrorCode::AuctionIsActive);
     require!(auction.auction_status == AuctionStatus::Active, AuctionErrorCode::AuctionIsNotactive);
     require!(ctx.accounts.seller.key() == auction.seller, AuctionErrorCode::NotOriginalLister);
     require!(auction.highest_bidder.is_none(),AuctionErrorCode::IllegalCancelAuction);

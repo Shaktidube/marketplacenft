@@ -2600,88 +2600,58 @@
   "errors": [
     {
       "code": 6000,
-      "name": "AuctionIsNotactive",
-      "msg": "auction is not active"
+      "name": "InvalidCreatorAccount",
+      "msg": "Creator account does not match metadata"
     },
     {
       "code": 6001,
-      "name": "AuctionStartTimeInPast",
-      "msg": "start time should not be in the past"
+      "name": "InvalidDecimals",
+      "msg": "fungible token"
     },
     {
       "code": 6002,
+      "name": "InvalidMint",
+      "msg": "Mint account is not valid nft"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidAmount",
+      "msg": "insufficient balance"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidCreators",
+      "msg": "missing creator account"
+    },
+    {
+      "code": 6005,
+      "name": "ListingNotActive",
+      "msg": "listing is not active"
+    },
+    {
+      "code": 6006,
+      "name": "PriceNotAllowed",
+      "msg": "price not allowed"
+    },
+    {
+      "code": 6007,
       "name": "NotOriginalLister",
       "msg": "not original lister"
     },
     {
-      "code": 6003,
-      "name": "BidNotValid",
-      "msg": "bod must start from start price"
-    },
-    {
-      "code": 6004,
-      "name": "CurrentBisIsNotValid",
-      "msg": "bid must be greater then previous bid"
-    },
-    {
-      "code": 6005,
-      "name": "CurrentBidderIsNotValid",
-      "msg": "bidder is not valid"
-    },
-    {
-      "code": 6006,
-      "name": "PreviousBidderIsNotVAlid",
-      "msg": "previous bidder is not valid"
-    },
-    {
-      "code": 6007,
-      "name": "AuctionTimeOver",
-      "msg": "auction is over"
-    },
-    {
       "code": 6008,
-      "name": "PreviousBidderMismatch",
-      "msg": "previous bidder mismatch"
+      "name": "InvalidNFTAmont",
+      "msg": "escrow has no nft"
     },
     {
       "code": 6009,
-      "name": "InvalidBidderAccount",
-      "msg": "invalid bidder"
+      "name": "UnauthorizedNFTListing",
+      "msg": "Unauthorized NFT Listing"
     },
     {
       "code": 6010,
-      "name": "InsufficientBalance",
-      "msg": "Insufficient funds!!"
-    },
-    {
-      "code": 6011,
-      "name": "IllegalCancelAuction",
-      "msg": "illegal Cancel AUction!!"
-    },
-    {
-      "code": 6012,
-      "name": "AuctionIsActive",
-      "msg": "Auction Is Active!!"
-    },
-    {
-      "code": 6013,
-      "name": "AuctionIsNotStarted",
-      "msg": "Auction Is Not Started!!"
-    },
-    {
-      "code": 6014,
-      "name": "UnAuthorizedSigner",
-      "msg": "UnAuthorized Signer!!"
-    },
-    {
-      "code": 6015,
-      "name": "BidderIsNotValidWinner",
-      "msg": "bidder is not valid winner"
-    },
-    {
-      "code": 6016,
-      "name": "SellerIsNotValidWinner",
-      "msg": "seller is not valid winner"
+      "name": "BuyerNotValid",
+      "msg": "buyer is not allowed"
     }
   ],
   "types": [

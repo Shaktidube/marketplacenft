@@ -81,8 +81,8 @@ const MintNftPage = () => {
         break;
       case "nftSymbol":
         if (!value.trim()) error = "NFT Symbol is required.";
-        else if (value.trim().length < 2 || value.trim().length > 10)
-          error = "NFT Symbol must be 2-10 characters.";
+        else if (value.trim().length < 1 || value.trim().length > 4)
+          error = "NFT Symbol must be 1-4 characters.";
         break;
       case "nftPhoto":
         if (!value) error = "NFT Photo is required.";
@@ -137,9 +137,9 @@ const MintNftPage = () => {
       nftSymbol: validateField("nftSymbol", nftSymbol),
       nftPhoto: validateField("nftPhoto", nftPhoto),
       royalty: validateField("royalty", royalty),
-      creators: validateField("creators", creators),
-      maxSupply: validateField("maxSupply", maxSupply),
-      collectionMint: validateField("collectionMint", collectionMint),
+      // creators: validateField("creators", creators),
+      // maxSupply: validateField("maxSupply", maxSupply),
+      // collectionMint: validateField("collectionMint", collectionMint),
     };
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => !error);
@@ -223,17 +223,17 @@ const MintNftPage = () => {
         },
         description: "A unique NFT minted on Solana Forge.",
         seller_fee_basis_points: parseFloat(royalty) * 100,
-        attributes: [
-          { trait_type: "Max Supply", value: maxSupply.toString() }
-        ],
-        collection: collectionMint.trim() ? {
-          name: nftName,
-          family: "Solana Marketplace Collection"
-        } : undefined,
-        creators: creators.split(',').map(creatorAddr => ({
-          address: new PublicKey(creatorAddr.trim()).toBase58(), 
-          share: Math.round(100 / creators.split(',').length),
-        })),
+        // attributes: [
+        //   { trait_type: "Max Supply", value: maxSupply.toString() }
+        // ],
+        // collection: collectionMint.trim() ? {
+        //   name: nftName,
+        //   family: "Solana Marketplace Collection"
+        // } : undefined,
+        // creators: creators.split(',').map(creatorAddr => ({
+        //   address: new PublicKey(creatorAddr.trim()).toBase58(), 
+        //   share: Math.round(100 / creators.split(',').length),
+        // })),
       };
 
       toast.loading("Uploading NFT metadata...", { id: 'upload-metadata' });
@@ -251,25 +251,25 @@ const MintNftPage = () => {
         publicKey
       );
 
-      const programCreators = creators.split(',').map(creatorAddr => ({
-        address: new PublicKey(creatorAddr.trim()),
-        share: Math.round(100 / creators.split(',').length),
-        verified: false,
-      }));
+      // const programCreators = creators.split(',').map(creatorAddr => ({
+      //   address: new PublicKey(creatorAddr.trim()),
+      //   share: Math.round(100 / creators.split(',').length),
+      //   verified: false,
+      // }));
 
-      let collection_mint_pubkey = null;
-      let collection_verified_bool = false;
-      if (collectionMint.trim()) {
-          try {
-              collection_mint_pubkey = new PublicKey(collectionMint.trim());
-              collection_verified_bool = collectionVerified;
-          } catch (e) {
-              console.error("Invalid collection mint address:", e);
-              toast.error("Invalid Collection Mint Address provided.");
-              setIsMinting(false);
-              return;
-          }
-      }
+      // let collection_mint_pubkey = null;
+      // let collection_verified_bool = false;
+      // if (collectionMint.trim()) {
+      //     try {
+      //         collection_mint_pubkey = new PublicKey(collectionMint.trim());
+      //         collection_verified_bool = collectionVerified;
+      //     } catch (e) {
+      //         console.error("Invalid collection mint address:", e);
+      //         toast.error("Invalid Collection Mint Address provided.");
+      //         setIsMinting(false);
+      //         return;
+      //     }
+      // }
 
       const mintTo = await program.methods
         .mintToNft(
@@ -301,7 +301,6 @@ const MintNftPage = () => {
       const txSig = await provider.connection.sendRawTransaction(signedTx.serialize());
       await provider.connection.confirmTransaction(txSig, "confirmed");
 
-      toast.dismiss('mint-tx'); // Dismiss minting loading toast
       const explorerUrl = `https://explorer.solana.com/tx/${txSig}?cluster=devnet`;
       toast.success(
         () => (
@@ -323,10 +322,10 @@ const MintNftPage = () => {
       setNftSymbol("");
       setNftPhoto(null);
       setRoyalty("");
-      setCreators("");
-      setCollectionMint("");
-      setCollectionVerified(false);
-      setMaxSupply("");
+      // setCreators("");
+      // setCollectionMint("");
+      // setCollectionVerified(false);
+      // setMaxSupply("");
       setErrors({});
 
       // Navigate after a short delay to allow confetti to start
@@ -339,6 +338,7 @@ const MintNftPage = () => {
       toast.error(`Error minting NFT: ${error.message || error.toString()}`);
       console.error(`Error minting NFT:`, error);
     } finally {
+      toast.dismiss('mint-tx');
       setIsMinting(false); // Re-enable button
     }
   };
@@ -560,20 +560,20 @@ const MintNftPage = () => {
             <span className="text-red-400">*</span>
           </label>
           <input
-            type="text"
-            id="creators"
-            value={creators}
-            onChange={(e) => {
-              setCreators(e.target.value);
-              setErrors((prev) => ({ ...prev, creators: "" }));
-            }}
-            className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
-              ${errors.creators ? "border-red-500" : "border-gray-600"}`}
+            // type="text"
+            // id="creators"
+            // value={creators}
+            // onChange={(e) => {
+            //   setCreators(e.target.value);
+            //   setErrors((prev) => ({ ...prev, creators: "" }));
+            // }}
+            className={`shadow-md appearance-none border border-gray-600 rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102`}
             placeholder="e.g., Addr1,Addr2"
+            disabled
           />
-          {errors.creators && (
+          {/* {errors.creators && (
             <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.creators}</p>
-          )}
+          )} */}
         </div>
 
         {/* Collection Mint Address */}
@@ -595,6 +595,8 @@ const MintNftPage = () => {
             className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
               ${errors.collectionMint ? "border-red-500" : "border-gray-600"}`}
             placeholder="Optional: Collection Mint Address"
+            disabled
+            
           />
           {errors.collectionMint && (
             <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.collectionMint}</p>
@@ -609,6 +611,7 @@ const MintNftPage = () => {
             checked={collectionVerified}
             onChange={(e) => setCollectionVerified(e.target.checked)}
             className="form-checkbox h-5 w-5 text-blue-600 bg-gray-900 border-gray-600 rounded focus:ring-blue-500 cursor-pointer"
+            disabled
           />
           <label
             htmlFor="collectionVerified"
@@ -628,20 +631,21 @@ const MintNftPage = () => {
           </label>
           <input
             type="number"
-            id="maxSupply"
-            value={maxSupply}
-            onChange={(e) => {
-              setMaxSupply(e.target.value);
-              setErrors((prev) => ({ ...prev, maxSupply: "" }));
-            }}
-            min="1"
-            className={`shadow-md appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
-              ${errors.maxSupply ? "border-red-500" : "border-gray-600"}`}
+            // id="maxSupply"
+            // value={maxSupply}
+            // onChange={(e) => {
+            //   setMaxSupply(e.target.value);
+            //   setErrors((prev) => ({ ...prev, maxSupply: "" }));
+            // }}
+            // min="1"
+            className={`shadow-md appearance-none border border-gray-600 rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-3 focus:ring-blue-500 focus:border-blue-500 bg-gray-900 bg-opacity-70 transition duration-200 ease-in-out transform focus:scale-102
+              `}
             placeholder=" e.g., 1"
+            disabled
           />
-          {errors.maxSupply && (
+          {/* {errors.maxSupply && (
             <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.maxSupply}</p>
-          )}
+          )} */}
         </div>
 
         {/* Submit Button */}

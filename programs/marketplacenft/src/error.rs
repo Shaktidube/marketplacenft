@@ -12,7 +12,7 @@ pub enum AuctionErrorCode {
     #[msg("not original lister")]
     NotOriginalLister,
 
-    #[msg("bod must start from start price")]
+    #[msg("bid must start from start price")]
     BidNotValid,
 
     #[msg("bid must be greater then previous bid")]

@@ -1,6 +1,7 @@
 // SellModal.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast'; // Make sure toast is imported
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.75 },
@@ -8,7 +9,7 @@ const modalVariants = {
   exit: { opacity: 0, scale: 0.75, transition: { duration: 0.2 } },
 };
 
-const backdropVariants = {
+const backdropVariants = {  
   hidden: { opacity: 0 },
   visible: { opacity: 1 },
 };
@@ -16,23 +17,56 @@ const backdropVariants = {
 function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
   const [price, setPrice] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  // Reset price when modal opens for a new NFT
+  // Centralized validation for the price field
+  const validatePrice = (value) => {
+    if (!value.trim()) {
+      return "Price is required.";
+    }
+    const parsedPrice = parseFloat(value);
+    if (isNaN(parsedPrice)) {
+      return "Invalid price. Please enter a number.";
+    }
+    if (parsedPrice <= 0) { // Price must be positive
+      return "Price must be greater than zero.";
+    }
+    return ""; // No error
+  };
+
+  // Validate the entire form
+  const validateForm = () => {
+    const priceError = validatePrice(price);
+    const newErrors = {
+      price: priceError,
+    };
+    setErrors(newErrors);
+    // Return true if there are no errors in any field
+    return Object.values(newErrors).every((error) => !error);
+  };
+
+  // Reset price and errors when modal opens for a new NFT
   useEffect(() => {
     if (isOpen) {
       setPrice('');
+      setErrors({}); // Clear errors when modal opens
     }
   }, [isOpen]);
 
   const handleSubmit = async () => {
-    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
-      alert('Please enter a valid price.');
+    // Validate the form before proceeding
+    if (!validateForm()) {
+      toast.error("Please correct the errors in the form.");
       return;
     }
+
     setIsProcessing(true);
+    // Call the parent's onConfirmSell function
     await onConfirmSell(nft, parseFloat(price));
     setIsProcessing(false);
-    onClose(); // Close modal after action, `onConfirmSell` will handle toast
+    // The parent's onConfirmSell is responsible for closing the modal and showing success/failure toasts
+    // For now, we'll keep onClose here, but consider if onConfirmSell should conditionally close
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -46,7 +80,7 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
           initial="hidden"
           animate="visible"
           exit="hidden"
-          onClick={onClose} // Close when clicking outside
+          onClick={onClose}
         >
           <motion.div
             className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-2xl relative border border-gray-700"
@@ -54,7 +88,7 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
             initial="hidden"
             animate="visible"
             exit="exit"
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={onClose}
@@ -81,7 +115,7 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
                 )}
                 <h3 className="text-xl font-semibold text-white text-center">{nft.name}</h3>
                 <p className="text-gray-400 text-sm">{nft.symbol}</p>
-                <p className="text-gray-500 text-xs mt-1 break-all">{nft.mintAddress}</p> {/* Displaying mintAddress */}
+                <p className="text-gray-500 text-xs mt-1 break-all">{nft.mintAddress}</p>
               </div>
             )}
 
@@ -93,20 +127,29 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
                 type="number"
                 id="price"
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={(e) => {
+                  setPrice(e.target.value);
+                  // Optional: Validate on change to provide real-time feedback
+                  setErrors(prevErrors => ({ ...prevErrors, price: validatePrice(e.target.value) }));
+                }}
                 placeholder="e.g., 0.5 SOL"
-                className="w-full p-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className={`w-full p-3 bg-gray-700 text-white rounded-md border focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none
+                  ${errors.price ? "border-red-500" : "border-gray-600"}`} 
                 step="0.01"
-                min="0"
+                min="0" // Set min to 0, actual validation for > 0 is in JS
                 required
                 disabled={isProcessing}
               />
+              {errors.price && ( // Display error message if present
+                <p className="text-red-400 mt-1 ml-2 text-xs mb-1">{errors.price}</p>
+              )}
             </div>
 
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSubmit}
+              // Removed onSubmit={handleSubmit} from here, it should only be on the <form> tag if present
               className={`w-full py-3 rounded-md font-semibold text-white transition-all duration-200
                 ${isProcessing ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'}
               `}

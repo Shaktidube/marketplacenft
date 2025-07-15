@@ -17,7 +17,7 @@ const Marketplace = () => {
   const [isHovered, setIsHovered] = useState(false); 
   useEffect(() => {
     if (!connected && publicKey === null) {
-    //   toast.error("Wallet disconnected or not connected. Redirecting to home.");
+      // toast.error("Redirecting to home.");
       navigate('/'); 
     }
   }, [connected, publicKey, navigate]);
