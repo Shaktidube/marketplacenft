@@ -55,7 +55,7 @@ const Marketplace = () => {
   }
 
   return (
-    <div className='flex h-screen bg-gray-800 text-white'>
+    <div className='flex h-screen bg-gray-950 text-white'>
     
       <Sidebar />
 

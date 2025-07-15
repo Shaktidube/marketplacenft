@@ -288,7 +288,7 @@ function BuySell() {
     toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
     try {
       // Simulate blockchain transaction delay
-      // await new Promise(resolve => setTimeout(resolve, 2000)); // Remove if doing a real transaction
+      // await new Promise(resolve => setTimeout(resolve, 2000) ); // Remove if doing a real transaction
 
       // Ensure initialPrice is in lamports and wrapped in BN
       const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
@@ -306,8 +306,8 @@ function BuySell() {
       // --- Anchor Instruction Call ---
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
+        initialPriceLamports,
         auctionEndTimeBN, // Pass the calculated end time BN
-        initialPriceLamports
       )
       .accounts({
         seller: publicKey, // Use publicKey directly here
