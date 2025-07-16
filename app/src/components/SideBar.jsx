@@ -75,6 +75,14 @@ const Sidebar = () => {
                 <span className="absolute bottom-0 left-0 w-0 h-0.75 bg-indigo-400 transition-all duration-300 group-hover:w-full group-hover:scale-x-100 origin-left"></span>
               </NavLink>
             </li>
+            {/* NEW LINK FOR MY AUCTIONS / SETTLEMENT */}
+            <li className='mb-5 group'>
+              <NavLink to="/marketplace/my-auctions" className={linkClasses} onClick={() => setIsSidebarOpen(false)}>
+                <svg className="w-7 h-7 mr-4 text-indigo-300 group-hover:text-blue-100 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                My Auctions
+                <span className="absolute bottom-0 left-0 w-0 h-0.75 bg-indigo-400 transition-all duration-300 group-hover:w-full group-hover:scale-x-100 origin-left"></span>
+              </NavLink>
+            </li>
           </ul>
         </nav>
 

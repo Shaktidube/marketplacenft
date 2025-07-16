@@ -8,6 +8,7 @@ import BuySell from './BuySell';
 import Auction from './Auction';
 import Sidebar from './SideBar';
 import LiveSell from './LiveSell';
+import MyAuctions from './MyAuctions';
 
 const Marketplace = () => {
   const { publicKey, connected, disconnect } = useWallet();
@@ -73,7 +74,7 @@ const Marketplace = () => {
           </button>
         </div>
 
-        <main className='flex-1 p-8 overflow-y-auto'>
+        <main className='flex-1 p-8 overflow-y-auto custom-scrollbar-hidden'>
           <Routes>
             
             <Route index element={<Mint />} /> 
@@ -81,11 +82,21 @@ const Marketplace = () => {
             <Route path="buy-sell" element={<BuySell />} />
             <Route path="auction" element={<Auction />} />
             <Route path="live-sell" element={<LiveSell />} />
+            <Route path="my-auctions" element={<MyAuctions />} />
             
           </Routes>
           <Outlet /> 
         </main>
       </div>
+      <style jsx>{`
+        .custom-scrollbar-hidden {
+          -ms-overflow-style: none; /* IE and Edge */
+          scrollbar-width: none; /* Firefox */
+        }
+        .custom-scrollbar-hidden::-webkit-scrollbar {
+          display: none; /* Chrome, Safari, Opera */
+        }
+      `}</style>
     </div>
   );
 };

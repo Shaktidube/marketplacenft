@@ -75,7 +75,7 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-transparent bg-opacity-75 backdrop-blur-lg border-t-2 border-blue-400 border-b-2  flex items-center justify-center z-50 p-4"
           variants={backdropVariants}
           initial="hidden"
           animate="visible"

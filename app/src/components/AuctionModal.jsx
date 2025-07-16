@@ -104,7 +104,7 @@ const AuctionModal = ({ isOpen, onClose, nft, onConfirmAuction }) => {
   if (!isOpen) return null;
 
   return (
-    <div className='fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4'>
+    <div className='fixed inset-0 bg-transparent bg-opacity-75 backdrop-blur-lg  border-t-2 border-purple-400 border-b-2 flex items-center justify-center z-50 p-4'>
       <div className='bg-gray-900 rounded-xl shadow-2xl p-8 w-full max-w-md border border-gray-700 animate-scale-in'>
         <div className='flex justify-between items-center mb-6'>
           <h2 className='text-3xl font-bold text-white'>Start New Auction</h2>

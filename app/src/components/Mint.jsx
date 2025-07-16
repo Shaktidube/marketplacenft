@@ -6,23 +6,25 @@ import {
   Transaction,
   Keypair,
   SystemProgram,
+  SYSVAR_RENT_PUBKEY, // Ensure this is imported for metadata creation
 } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import idl from "../idl/marketplacenft.json";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-// import { createUmi, createGenericFile } from "@metaplex-foundation/umi"; // Not used directly for upload now
-// import { irysUploader } from "@metaplex-foundation/umi-uploader-irys"; // Not used directly for upload now
-// import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters"; // Not used directly for upload now
 import { PinataSDK } from "pinata";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { useNavigate } from "react-router-dom";
 import confetti from 'canvas-confetti';
 
-// Ensure Buffer is available in the browser environmen 
+// You may need to uncomment and enable Buffer polyfill if you encounter issues
+// with Pinata SDK or other libraries in a browser environment that expects Node.js Buffer.
+// import { Buffer } from 'buffer';
+// window.Buffer = window.Buffer || Buffer;
+
 
 const pinata = new PinataSDK({
   pinataJwt:
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJjYjFkY2YxNi0xZThkLTQzMWUtODY0OS02ZWI1ZGU5NmY3MzgiLCJlbWFpbCI6InNoYWt0aWR1YmUwNEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiODMzZWJhYTM0MzdlOTM4YmI3MGQiLCJzY29wZWRLZXlTZWNyZXQiOiJiNWM1ZTJjYWI5NTJiNGJjNDE1YmQwOWE1NWE3YjQ4N2JkMzMwODA3MjA0YzExNzVjMjU1ODAyZDlmNjM2ZGRmIiwiZXhwIjoxNzgzNjg0ODg5fQ.znwjWW5dCcybxih3UKJH1zRuaGz6Z2bFY3ED4NYCI38",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJjYjFkY2YxNi0xZThkLTQzMWUtODY0OS02ZWI1ZGU5NmY3MzgiLCJlbWFpbCI6InNoYWt0aWR1YmUwNEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiOTkyYWQwZTM2MDU4NmJkZjBkZmUiLCJzY29wZWRLZXlTZWNyZXQiOiJlNzQ2YmQ5Mzg5NDlhYTRmZjU4OTJmN2Q3YzYxYzQzMGI2NzU2NWZlMGQwZmZiNjNiYmI4NDI2MDI2N2IxNzVjIiwiZXhwIjoxNzg0MTgwMzQyfQ.aFN39MrmLUxM-mAC6CDN5pc-6A952qK8MvQGXOvWu5k",
 });
 
 
@@ -38,11 +40,11 @@ const MintNftPage = () => {
   const [nftSymbol, setNftSymbol] = useState("");
   const [nftPhoto, setNftPhoto] = useState(null);
   const [royalty, setRoyalty] = useState("");
-  // Disabled for simplicity as per previous versions:
-  const [creators, setCreators] = useState("");
-  const [collectionMint, setCollectionMint] = useState("");
-  const [collectionVerified, setCollectionVerified] = useState(false);
-  const [maxSupply, setMaxSupply] = useState("");
+  // Re-enabled state for creators input
+  const [additionalCreators, setAdditionalCreators] = useState(""); // Comma-separated addresses
+  const [collectionMint, setCollectionMint] = useState(""); // Keeping this as disabled
+  const [collectionVerified, setCollectionVerified] = useState(false); // Keeping this as disabled
+  const [maxSupply, setMaxSupply] = useState(""); // Keeping this as disabled
 
   const [errors, setErrors] = useState({});
   const [isMinting, setIsMinting] = useState(false);
@@ -52,7 +54,8 @@ const MintNftPage = () => {
   const PROGRAM_ID = new PublicKey(
     "9U1c1CFEyEgEjbrxFcbAymjb4sf8VjiYhm4rYD8Zzszf"
   );
-  const metadataProgramId = new PublicKey(
+  // Metaplex Token Metadata Program ID - this is constant
+  const METADATA_PROGRAM_ID = new PublicKey(
     "metaqbxxUerdq28cj1RbTFW3DvdbRrVfadqotrsmoBH"
   );
 
@@ -67,7 +70,7 @@ const MintNftPage = () => {
         break;
       case "nftSymbol":
         if (!value.trim()) error = "NFT Symbol is required.";
-        else if (value.trim().length < 1 || value.trim().length > 10) // Increased max length slightly for flexibility
+        else if (value.trim().length < 1 || value.trim().length > 10)
           error = "NFT Symbol must be 1-10 characters.";
         break;
       case "nftPhoto":
@@ -75,11 +78,24 @@ const MintNftPage = () => {
         break;
       case "royalty":
         const royaltyNum = parseFloat(value);
-        if (isNaN(royaltyNum)) error = "Royalty is required.";
-        else if (royaltyNum < 0 || royaltyNum > 100)
-          error = "Royalty must be between 0 and 100%.";
+        if (isNaN(royaltyNum) || value === "") error = "Royalty is required."; // Also check for empty string
+        else if (royaltyNum < 0 || royaltyNum > 99)
+          error = "Royalty must be between 0 and 99%.";
         break;
-      // Creator, Collection, MaxSupply validations are commented out as fields are disabled
+      case "additionalCreators":
+        if (value.trim() !== "") {
+          const addresses = value.split(',').map(addr => addr.trim());
+          for (const addr of addresses) {
+            if (addr === '') continue; // Skip empty strings resulting from extra commas
+            try {
+              new PublicKey(addr); // Attempt to create PublicKey to validate
+            } catch (e) {
+              error = `Invalid Solana address in creators list: ${addr}. Please check for typos or incomplete addresses.`;
+              break;
+            }
+          }
+        }
+        break;
       default:
         break;
     }
@@ -92,6 +108,7 @@ const MintNftPage = () => {
       nftSymbol: validateField("nftSymbol", nftSymbol),
       nftPhoto: validateField("nftPhoto", nftPhoto),
       royalty: validateField("royalty", royalty),
+      additionalCreators: validateField("additionalCreators", additionalCreators), // Validate new field
     };
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => !error);
@@ -142,15 +159,92 @@ const MintNftPage = () => {
       anchor.AnchorProvider.defaultOptions()
     );
     anchor.setProvider(provider);
-    const program = new anchor.Program(idl, provider);
+    const program = new anchor.Program(idl, provider); // Using the loaded IDL and provider
 
     try {
       // 1. Upload Image to Pinata
       toast.loading("Uploading NFT image...", { id: mintToastId });
+      // const uploadImageRes = await pinata.upload.public.file(nftPhoto);
       const uploadImageRes = await pinata.upload.public.file(nftPhoto);
       const imageUri = `https://gateway.pinata.cloud/ipfs/${uploadImageRes.cid}`;
       console.log("Image uploaded to IPFS:", imageUri);
       toast.success("Image uploaded!", { id: mintToastId });
+
+      // 2. Prepare Creators Array
+      const creatorsArray = [];
+      const royaltyBasisPoints = parseFloat(royalty) * 100;
+
+      // Keep track of unique addresses to avoid duplicates
+      const uniqueCreatorAddresses = new Set();
+
+      // Add the mint owner (current publicKey) as the first creator
+      // and mark it as unique
+      if (publicKey) { // Ensure publicKey exists
+          creatorsArray.push({
+              address: publicKey,
+              verified: true, // This creator is verified by the mint transaction
+              share: 0,       // Share will be distributed across all creators
+          });
+          uniqueCreatorAddresses.add(publicKey.toBase58());
+      }
+
+
+      // Add additional creators from input, ensuring no duplicates
+      const parsedAdditionalCreators = additionalCreators
+        .split(',')
+        .map(addr => addr.trim())
+        .filter(addr => addr !== ''); // Filter out empty strings from multiple commas
+
+      parsedAdditionalCreators.forEach(addr => {
+        try {
+          const creatorPubKey = new PublicKey(addr);
+          const creatorPubKeyStr = creatorPubKey.toBase58();
+
+          // Check for duplicate before adding
+          if (!uniqueCreatorAddresses.has(creatorPubKeyStr)) {
+            creatorsArray.push({
+              address: creatorPubKey,
+              verified: false, // Additional creators are not verified initially by this transaction
+              share: 0,
+            });
+            uniqueCreatorAddresses.add(creatorPubKeyStr);
+          } else {
+            console.warn("Skipping duplicate additional creator address:", addr);
+            toast.warn(`Duplicate creator address ignored: ${addr}`);
+          }
+        } catch (e) {
+          console.warn("Skipping invalid additional creator address:", addr, e);
+          toast.error(`Invalid creator address found and ignored: ${addr}`);
+        }
+      });
+
+      // Distribute shares among all unique creators (including the mint owner)
+      const totalCreators = creatorsArray.length;
+      if (totalCreators > 0) {
+        const baseShare = Math.floor(100 / totalCreators);
+        let remainingShare = 100;
+
+        for (let i = 0; i < totalCreators; i++) {
+          creatorsArray[i].share = baseShare;
+          remainingShare -= baseShare;
+        }
+        // Assign any remainder to the first creator (the minter's address)
+        if (totalCreators > 0) {
+            creatorsArray[0].share += remainingShare;
+        }
+      }
+
+      console.log("Final Creators Array for On-Chain:", creatorsArray.map(c => ({
+        address: c.address.toBase58(),
+        verified: c.verified,
+        share: c.share
+      })));
+
+      // Prepare creators for metadata JSON (verified status typically not in JSON)
+      const metadataCreators = creatorsArray.map(c => ({
+        address: c.address.toBase58(),
+        share: c.share,
+      }));
 
       const metadata = {
         name: nftName,
@@ -162,10 +256,10 @@ const MintNftPage = () => {
             type: nftPhoto.type
           }],
           category: "image",
+          creators: metadataCreators, // Add creators to metadata
         },
         description: "A unique NFT minted on Solana Forge.",
-        seller_fee_basis_points: parseFloat(royalty) * 100,
-        // attributes, collection, creators are disabled in the UI for now
+        seller_fee_basis_points: royaltyBasisPoints,
       };
 
       toast.loading("Uploading NFT metadata...", { id: mintToastId });
@@ -176,31 +270,51 @@ const MintNftPage = () => {
 
       toast.loading("Minting NFT on Solana...", { id: mintToastId });
 
-      const sellerFeesBasisPoints = parseFloat(royalty) * 100;
+      // Derive Metadata and Master Edition PDAs
+      const [metadataAccount] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          METADATA_PROGRAM_ID.toBuffer(),
+          mintNftKeypair.publicKey.toBuffer(),
+        ],
+        METADATA_PROGRAM_ID
+      );
+
+      const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          METADATA_PROGRAM_ID.toBuffer(),
+          mintNftKeypair.publicKey.toBuffer(),
+          Buffer.from("edition"),
+        ],
+        METADATA_PROGRAM_ID
+      );
 
       const ata = await getAssociatedTokenAddress(
         mintNftKeypair.publicKey,
         publicKey
       );
 
+      // Call the Anchor program method
       const mintToInstruction = await program.methods
         .mintToNft(
           nftName,
           nftSymbol,
           metadataUri,
-          sellerFeesBasisPoints,
-          null, // creators
-          null, // collection_mint
-          null, // collection_verified
-          null  // max_supply
+          royaltyBasisPoints, // Pass calculated basis points
+          creatorsArray, // Pass the prepared creators array to the program
+          null, // IsMutable: Set as needed, typically true for initial NFTs to allow updates
+          null,
+          null
         )
         .accounts({
           signer: wallet.adapter.publicKey,
           mint: mintNftKeypair.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
           tokenAccount: ata,
-          systemProgram: SystemProgram.programId, // Add SystemProgram
-        }).instruction(); // Get the instruction directly
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
 
       const transaction = new Transaction();
       transaction.add(mintToInstruction);
@@ -209,12 +323,12 @@ const MintNftPage = () => {
       transaction.feePayer = publicKey;
 
       const signedTx = await wallet.adapter.signTransaction(transaction);
-      signedTx.partialSign(mintNftKeypair);
+      signedTx.partialSign(mintNftKeypair); // Sign with the generated mint keypair
 
       const txSig = await provider.connection.sendRawTransaction(signedTx.serialize());
       await provider.connection.confirmTransaction(txSig, "confirmed");
 
-      const explorerUrl = `https://explorer.solana.com/tx/${txSig}?cluster=devnet`;
+      const explorerUrl = `https://explorer.solana.com/tx/${txSig}?cluster=devnet`; // Change cluster if needed
       toast.success(
         () => (
           <div>
@@ -235,7 +349,7 @@ const MintNftPage = () => {
       setNftSymbol("");
       setNftPhoto(null);
       setRoyalty("");
-      setCreators("");
+      setAdditionalCreators(""); // Clear additional creators input
       setCollectionMint("");
       setCollectionVerified(false);
       setMaxSupply("");
@@ -249,15 +363,18 @@ const MintNftPage = () => {
       toast.dismiss(mintToastId);
       let errorMessage = `Error minting NFT: ${error.message || error.toString()}`;
       if (error.logs) {
+        console.error("Transaction logs:", error.logs); // Log all logs for deeper debugging
         const programErrorLog = error.logs.find(log => log.includes("Program log: AnchorError"));
         if (programErrorLog) {
+          // Attempt to parse Anchor program errors
           errorMessage = programErrorLog.split("Error Message: ")[1] || errorMessage;
-        } else {
-          errorMessage = `Transaction failed: ${error.logs.join('\n')}`;
+        } else if (error.message.includes("failed to send transaction: Transaction simulation failed")) {
+            // General simulation failure, could be missing required signers, insufficient lamports etc.
+            errorMessage = `Transaction simulation failed. Check wallet balance, required accounts, or RPC. Logs: ${error.logs.join('\n')}`;
         }
       }
       toast.error(errorMessage, { duration: 6000 });
-      console.error(`Error minting NFT:`, error);
+      console.error(`Full error details:`, error);
     } finally {
       setIsMinting(false);
     }
@@ -462,22 +579,29 @@ const MintNftPage = () => {
           )}
         </div>
 
-        {/* Creators (Disabled) */}
+        {/* NEW: Additional Creators Input (re-enabled) */}
         <div>
-          <label htmlFor="creators" className="block text-gray-200 text-base font-semibold mb-2">
+          <label htmlFor="additionalCreators" className="block text-gray-200 text-base font-semibold mb-2">
             Creators (Comma-separated addresses)
           </label>
           <input
             type="text"
-            id="creators"
-            value={creators}
-            className={`shadow-inner appearance-none border rounded-lg w-full py-3 px-4 text-gray-400 leading-tight bg-gray-900/30 cursor-not-allowed opacity-60`}
-            placeholder="e.g., Addr1,Addr2 (Feature disabled)"
-            disabled
+            id="additionalCreators"
+            value={additionalCreators}
+            onChange={(e) => {
+              setAdditionalCreators(e.target.value);
+              setErrors((prev) => ({ ...prev, additionalCreators: "" })); // Clear error on change
+            }}
+            className={`shadow-inner appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-900/50 transition duration-200 ease-in-out transform focus:scale-[1.01] placeholder-gray-500
+              ${errors.additionalCreators ? "border-red-500" : "border-gray-700"}`}
+            placeholder="e.g., Addr1, Addr2"
           />
+          {errors.additionalCreators && (
+            <p className="text-red-400 mt-1 ml-1 text-sm">{errors.additionalCreators}</p>
+          )}
         </div>
 
-        {/* Collection Mint Address (Disabled) */}
+        {/* Collection Mint Address (Still Disabled) */}
         <div>
           <label htmlFor="collectionMint" className="block text-gray-200 text-base font-semibold mb-2">
             Collection Mint Address
@@ -485,19 +609,19 @@ const MintNftPage = () => {
           <input
             type="text"
             id="collectionMint"
-            value={collectionMint}
+            value={collectionMint} // Keep value binding for consistency if you decide to enable later
             className={`shadow-inner appearance-none border rounded-lg w-full py-3 px-4 text-gray-400 leading-tight bg-gray-900/30 cursor-not-allowed opacity-60`}
             placeholder="Optional: Collection Mint Address (Feature disabled)"
             disabled
           />
         </div>
 
-        {/* Collection Verified (Disabled) */}
+        {/* Collection Verified (Still Disabled) */}
         <div className="flex items-center pt-2">
           <input
             type="checkbox"
             id="collectionVerified"
-            checked={collectionVerified}
+            checked={collectionVerified} // Keep checked binding
             className="form-checkbox h-5 w-5 text-blue-600 bg-gray-900 border-gray-600 rounded focus:ring-blue-500 cursor-not-allowed opacity-60"
             disabled
           />
@@ -506,7 +630,7 @@ const MintNftPage = () => {
           </label>
         </div>
 
-        {/* Max Supply (Disabled) */}
+        {/* Max Supply (Still Disabled) */}
         <div>
           <label htmlFor="maxSupply" className="block text-gray-200 text-base font-semibold mb-2">
             Max Supply

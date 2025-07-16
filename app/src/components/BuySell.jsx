@@ -468,12 +468,12 @@ function BuySell() {
   const displayNoNftsMessage = !loading && nfts.length === 0 && totalNfts === 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br text-white p-8 overflow-y-auto custom-scrollbar-hidden">
+    <div className="min-h-screen bg-gradient-to-br p-8 overflow-y-auto custom-scrollbar-hidden">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className='text-4xl md:text-5xl font-extrabold mb-10 text-center bg-clip-text bg-gradient-to-r  from-blue-500 to-purple-600'
+        className='text-4xl md:text-5xl font-extrabold from-blue-500 to-purple-600 mb-10 text-center bg-clip-text bg-gradient-to-r  '
       >
         Your Digital Assets
       </motion.h1>
