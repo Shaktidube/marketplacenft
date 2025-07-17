@@ -319,6 +319,7 @@ function LiveSell() {
                 .mul(new anchor.BN(Math.round(royaltyFraction * 10000)))
                 .div(new anchor.BN(10000));
 
+
               metadata.data.creators.forEach((creator) => {
                 if (creator.share > 0) {
                   const creatorRoyaltyLamports = totalRoyaltyLamports

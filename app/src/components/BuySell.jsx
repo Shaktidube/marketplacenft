@@ -17,6 +17,9 @@ import SellModal from './SellModal';
 import AuctionModal from './AuctionModal';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token'; 
 
+import { useRef } from 'react';
+
+
 const HELIUS_API_KEY = "e1ed6bae-c868-4b1b-9b21-e062d5edd982";
 const HELIUS_CLUSTER = "devnet";
 
@@ -59,13 +62,40 @@ const spinnerVariants = {
   },
 };
 
+const useWalletPopupDetection = () => {
+  const [isPopupVisible, setIsPopupVisible] = useState(false);
+
+  useEffect(() => {
+    // Adjust selector based on your wallet provider
+    const walletPopupSelector = '.sf-wallet-adapter-modal-wrapper'; // Solflare
+    // const walletPopupSelector = '.phantom-modal'; // For Phantom
+
+    const observer = new MutationObserver(() => {
+      const popup = document.querySelector(walletPopupSelector);
+      setIsPopupVisible(!!popup);
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return isPopupVisible;
+};
+
 function BuySell() {
   const { connection } = useConnection();
   const { publicKey, wallet, connected } = useWallet();
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { setVisible } = useWalletModal();
+  const { visible:setVisible , setVisible: setModalVisible } = useWalletModal(false);
+  const isPopupVisible = useWalletPopupDetection();
+  const observerRef = useRef(null);
   const navigate = useNavigate();
 
   // Pagination states
@@ -86,7 +116,6 @@ function BuySell() {
   );
   anchor.setProvider(provider);
   const program = new anchor.Program(idl, provider);
-
 
   useEffect(() => {
     if (!connected) {
@@ -205,7 +234,7 @@ function BuySell() {
       userMessage = "You are being rate-limited by Helius. Please wait a moment and try again.";
     } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
       userMessage = "Network error. Please check your internet connection.";
-    }
+    } 
 
     setError(userMessage);
     toast.error(userMessage, { id: 'loading-nfts' });
@@ -302,7 +331,7 @@ function BuySell() {
       console.log("NFT mint address : ", nft.mintAddress);
       console.log("Seller public key : ", publicKey.toBase58());
 
-
+      // setModalVisible(true);
       // --- Anchor Instruction Call ---
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
@@ -334,6 +363,7 @@ function BuySell() {
 
       const signedTransaction = await wallet.adapter.signTransaction(transaction);
       const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
+
       await provider.connection.confirmTransaction(txSign, "confirmed");
 
       // --- UPDATED: Use 'listedNftsForAuction' ---
@@ -372,6 +402,84 @@ function BuySell() {
       toast.error(`Failed to start auction for ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'auction-nft-action' });
     }
   }, [publicKey, wallet, program, provider, navigate]); // Added dependencies
+
+
+  // const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
+  //   toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
+    
+  //   // Track wallet popup state
+  //   let isPopupOpen = false;
+  //   let observer;
+
+  //   try {
+  //     // Setup MutationObserver to detect wallet popup
+  //     const setupPopupObserver = () => {
+  //       observer = new MutationObserver((mutations) => {
+  //         mutations.forEach((mutation) => {
+  //           const popupElement = document.querySelector('.solflare-wallet-adapter-modal'); // Adjust selector as needed
+            
+  //           if (popupElement && !isPopupOpen) {
+  //             console.log("Wallet popup appeared on screen");
+  //             isPopupOpen = true;
+  //           } else if (!popupElement && isPopupOpen) {
+  //             console.log("Wallet popup disappeared from screen");
+  //             isPopupOpen = false;
+  //           }
+  //         });
+  //       });
+
+  //       observer.observe(document.body, {
+  //         childList: true,
+  //         subtree: true
+  //       });
+  //     };
+
+  //     setupPopupObserver();
+
+  //     const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
+  //     const auctionStartTimeBN = new anchor.BN(startTime);
+  //     const auctionEndTimeBN = new anchor.BN(startTime + duration);
+
+  //     // Trigger wallet popup
+  //     setModalVisible(true);
+
+  //     const startAuctionInstruction = await program.methods.createAuction(
+  //       auctionStartTimeBN,
+  //       initialPriceLamports,
+  //       auctionEndTimeBN,
+  //     )
+  //     .accounts({
+  //       seller: publicKey,
+  //       nftMint: new PublicKey(nft.mintAddress),
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     })
+  //     .instruction();
+
+  //     const transaction = new Transaction();
+  //     transaction.add(startAuctionInstruction);
+
+  //     const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
+  //     transaction.recentBlockhash = blockhash;
+  //     transaction.lastValidBlockHeight = lastValidBlockHeight;
+  //     transaction.feePayer = publicKey;
+
+  //     const signedTransaction = await wallet.adapter.signTransaction(transaction);
+  //     const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
+
+  //     await provider.connection.confirmTransaction(txSign, "confirmed");
+
+  //     // ... rest of your success handling code ...
+
+  //   } catch (error) {
+  //     console.error("Error starting auction:", error);
+  //     toast.error(`Failed to start auction for ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'auction-nft-action' });
+  //   } finally {
+  //     // Clean up observer
+  //     if (observer) observer.disconnect();
+  //     setModalVisible(false); // Ensure popup is closed
+  //   }
+  // }, [publicKey, wallet, program, provider, navigate, setModalVisible]);
+
 
   const goToNextPage = () => {
     if (currentPage * nftsPerPage < totalNfts) {

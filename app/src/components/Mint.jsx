@@ -77,10 +77,19 @@ const MintNftPage = () => {
         if (!value) error = "NFT Photo is required.";
         break;
       case "royalty":
+        // Check for empty string first
+        if (value === "") {
+            error = "Royalty is required.";
+            break;
+        }
+        // After cleaning in onChange, parseFloat should work reliably.
+        // If it's still NaN here, it means it's an invalid number (e.g., just "." or "..").
         const royaltyNum = parseFloat(value);
-        if (isNaN(royaltyNum) || value === "") error = "Royalty is required."; // Also check for empty string
-        else if (royaltyNum < 0 || royaltyNum > 99)
-          error = "Royalty must be between 0 and 99%.";
+        if (isNaN(royaltyNum)) {
+            error = "Royalty must be a valid number.";
+        } else if (royaltyNum < 0 || royaltyNum > 99) {
+            error = "Royalty must be between 0 and 99%.";
+        }
         break;
       case "additionalCreators":
         if (value.trim() !== "") {
@@ -172,6 +181,7 @@ const MintNftPage = () => {
 
       // 2. Prepare Creators Array
       const creatorsArray = [];
+      // Use the royalty state directly, which has been cleaned by handleRoyaltyChange
       const royaltyBasisPoints = parseFloat(royalty) * 100;
 
       // Keep track of unique addresses to avoid duplicates
@@ -425,6 +435,41 @@ const MintNftPage = () => {
     fileInputRef.current.click();
   };
 
+  // Specific handler for royalty input to filter 'e' and other invalid chars
+  const handleRoyaltyChange = (e) => {
+    const value = e.target.value;
+    let cleanedValue = value;
+
+    // Check if 'e' is present (case-insensitive). If so, provide a specific error.
+    if (value.toLowerCase().includes('e')) {
+        // Option 1: Remove 'e' and show a warning/error (less intrusive)
+        toast.error("Exponential notation ('e') is not allowed. Please enter a simple decimal number.", {duration: 3000});
+        cleanedValue = value.replace(/e/gi, ''); // Remove all 'e' characters
+    }
+
+    // Now apply general numeric filtering if 'e' wasn't the only issue or if 'e' was removed.
+    if (cleanedValue === '') {
+        cleanedValue = '';
+    } else if (/^\d*\.?\d*$/.test(cleanedValue)) {
+        // If it matches a valid numeric string pattern (digits and max one dot)
+        // No further cleaning needed for this path
+    } else {
+        // If it contains other invalid characters (like multiple dots) after initial 'e' removal
+        cleanedValue = cleanedValue.replace(/[^0-9.]/g, ''); // Remove all non-numeric and non-decimal chars
+        const parts = cleanedValue.split('.');
+        if (parts.length > 2) {
+            cleanedValue = parts[0] + '.' + parts.slice(1).join('');
+        }
+    }
+
+    setRoyalty(cleanedValue);
+    // Set validation error using the validateField, which will now receive a cleaned value.
+    // If 'e' was present and filtered, the validateField will still get a valid number if possible.
+    // The toast message above provides immediate feedback for 'e'.
+    setErrors((prev) => ({ ...prev, royalty: validateField("royalty", cleanedValue) }));
+  };
+
+
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-y-auto custom-scrollbar-hidden">
       <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-4 animate-slideInDown text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-blue-400 to-purple-500 drop-shadow-lg">
@@ -556,19 +601,16 @@ const MintNftPage = () => {
           )}
         </div>
 
-        {/* Royalty */}
+        {/* Royalty - UPDATED onChange HERE */}
         <div>
           <label htmlFor="royalty" className="block text-gray-200 text-base font-semibold mb-2">
             Royalty (%) <span className="text-red-400">*</span>
           </label>
           <input
-            type="number"
+            type="number" // Keep type="number" for mobile keyboard and native min/max hints
             id="royalty"
             value={royalty}
-            onChange={(e) => {
-              setRoyalty(e.target.value);
-              setErrors((prev) => ({ ...prev, royalty: "" }));
-            }}
+            onChange={handleRoyaltyChange} // Use the new handler
             step="0.01"
             className={`shadow-inner appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-900/50 transition duration-200 ease-in-out transform focus:scale-[1.01] placeholder-gray-500
               ${errors.royalty ? "border-red-500" : "border-gray-700"}`}

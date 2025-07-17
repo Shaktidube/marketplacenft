@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY, SYSVAR_CLOCK_PUBKEY, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import idl from "../idl/marketplacenft.json";
 import toast from 'react-hot-toast';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { NavLink } from 'react-router-dom';
 
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
@@ -69,6 +70,11 @@ function Auction() {
   const [successfulBidNftName, setSuccessfulBidNftName] = useState("");
   const { publicKey, wallet, connected } = useWallet();
 
+  // State to hold the current on-chain time (updated less frequently, source of truth)
+  const [onChainCurrentTime, setOnChainCurrentTime] = useState(0);
+  // State for local display time (updated every second for smooth countdown)
+  const [localDisplayTime, setLocalDisplayTime] = useState(Math.floor(Date.now() / 1000));
+
   const programRef = useRef(null);
 
   const getProgram = useCallback(() => {
@@ -92,11 +98,52 @@ function Auction() {
 
   const program = getProgram();
 
+  // Effect to fetch initial on-chain time and update it periodically
+  useEffect(() => {
+    const fetchOnChainTime = async () => {
+      if (!connection) return;
+      try {
+        const clockAcc = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
+        if (clockAcc) {
+          // Solana clock data structure:
+          // 0-7: slot (u64)
+          // 8-15: epoch_start_timestamp (i64)
+          // 16-23: epoch (u64)
+          // 24-31: leader_schedule_epoch (u64)
+          // 32-39: unix_timestamp (i64) -> This is the one we want for current time
+          const unixTimestamp = new anchor.BN(clockAcc.data.slice(32, 40), "le").toNumber();
+          setOnChainCurrentTime(unixTimestamp);
+        }
+      } catch (error) {
+        console.error("Failed to fetch on-chain clock:", error);
+      }
+    };
+
+    fetchOnChainTime(); // Fetch immediately on mount
+
+    // const intervalId = setInterval(fetchOnChainTime, 15000); // Update on-chain time every 15 seconds
+// 
+    // return () => clearInterval(intervalId); // Cleanup interval
+  }, [connection]);
+
+  // Effect to update local display time every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLocalDisplayTime(Math.floor(Date.now() / 1000));
+    }, 1000); // Update every 1 second
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const storedListedNfts = localStorage.getItem('listedNftsForAuction');
     if (storedListedNfts) {
       try {
-        setListedNftsForAuction(JSON.parse(storedListedNfts));
+        const parsedNfts = JSON.parse(storedListedNfts);
+        // Filter out auctions that have already ended based on current local time initially
+        // This will be refined by onChainCurrentTime below when bids are fetched
+        const now = Math.floor(Date.now() / 1000); // Use local time for initial filter
+        const activeAuctions = parsedNfts.filter(nft => (nft.startTime + nft.duration) > now);
+        setListedNftsForAuction(activeAuctions);
       } catch (e) {
         console.error("Failed to parse listed NFTs from localStorage", e);
         setListedNftsForAuction([]);
@@ -131,6 +178,24 @@ function Auction() {
 
           const auctionAcc = await program.account.auction.fetch(auctionPda);
           bids[nft.mintAddress] = auctionAcc.currentBid.toNumber() / LAMPORTS_PER_SOL;
+
+          // Crucial: Re-evaluate auction end based on the latest on-chain time
+          // and the fetched auction's endTime here, right after fetching.
+          if (onChainCurrentTime !== 0 && onChainCurrentTime >= auctionAcc.endTime.toNumber()) {
+            console.log(`Auction for ${nft.name} detected as ended on-chain. Removing from live list.`);
+            setListedNftsForAuction(prev => {
+                const updated = prev.filter(item => item.mintAddress !== nft.mintAddress);
+                localStorage.setItem('listedNftsForAuction', JSON.stringify(updated));
+                return updated;
+            });
+            setCurrentBids(prev => {
+                const newBids = { ...prev };
+                delete newBids[nft.mintAddress];
+                return newBids;
+            });
+            toast(`Auction for ${nft.name} has ended! Check your "My Auctions" page to settle.`, { duration: 5000 });
+          }
+
         } catch (error) {
           console.warn(`Could not fetch bid for ${nft.name} (${nft.mintAddress.substring(0, 6)}...):`, error.message);
           bids[nft.mintAddress] = 0;
@@ -145,10 +210,11 @@ function Auction() {
       }
     }
     setCurrentBids(bids);
-  }, [program]);
+  }, [program, onChainCurrentTime]); // Add onChainCurrentTime to dependencies here too
 
   useEffect(() => {
     if (!loading && listedNftsForAuction.length > 0 && program) {
+      // Fetch bids only for currently active auctions after initial load/filter
       fetchAllCurrentBids(listedNftsForAuction);
 
       const subscriptions = [];
@@ -169,6 +235,7 @@ function Auction() {
               try {
                 const decodedAccount = program.coder.accounts.decode("auction", accountInfo.data);
                 const newBid = decodedAccount.currentBid.toNumber() / LAMPORTS_PER_SOL;
+                // const newHighestBidder = decodedAccount.highestBidder.toBase58(); // Not directly used here, but good to know
 
                 setCurrentBids(prev => {
                   const currentNftBid = prev[nft.mintAddress] || 0;
@@ -181,6 +248,25 @@ function Auction() {
                   }
                   return prev;
                 });
+
+                // Check if auction ended based on on-chain data
+                // Use onChainCurrentTime for more accurate check if available
+                const checkTime = onChainCurrentTime; // Use the most recently fetched onChainCurrentTime
+                if (checkTime !== 0 && checkTime >= decodedAccount.endTime.toNumber()) {
+                    console.log(`Auction for ${nft.name} has ended via account change listener. Removing from live list.`);
+                    setListedNftsForAuction(prev => {
+                        const updated = prev.filter(item => item.mintAddress !== nft.mintAddress);
+                        localStorage.setItem('listedNftsForAuction', JSON.stringify(updated));
+                        return updated;
+                    });
+                    setCurrentBids(prev => { // Also remove its bid from state
+                      const newBids = { ...prev };
+                      delete newBids[nft.mintAddress];
+                      return newBids;
+                    });
+                    toast(`Auction for ${nft.name} has ended! Check your "My Auctions" page to settle.`, { duration: 5000 });
+                }
+
               } catch (decodeError) {
                 console.error("Error decoding account on change:", decodeError);
               }
@@ -198,7 +284,7 @@ function Auction() {
       };
 
     }
-  }, [loading, listedNftsForAuction, program, connection, fetchAllCurrentBids]);
+  }, [loading, listedNftsForAuction, program, connection, fetchAllCurrentBids, onChainCurrentTime]); // Add onChainCurrentTime to dependencies
 
   const formatTimeLeft = (seconds) => {
     if (seconds <= 0) return "Auction Ended";
@@ -266,8 +352,10 @@ function Auction() {
           return;
       }
 
-      if (auctionAcc.currentBid.gtn(0) || auctionAcc.highestBidder.toBase58() !== SystemProgram.programId.toBase55()) { // Changed from PublicKey.default().toBase58() to SystemProgram.programId.toBase58() for consistency with Anchor's default pubkey for uninitialized accounts.
-          toast.error("Cannot cancel auction with active bids. Wait for it to end.", { id: 'cancel-auction' });
+      // Check for bids BEFORE trying to cancel.
+      // Use the actual highestBidder from on-chain data.
+      if (auctionAcc.currentBid.gtn(0) || auctionAcc.highestBidder.toBase58() !== SystemProgram.programId.toBase58()) {
+          toast.error("Cannot cancel auction with active bids. Wait for it to end, then use 'Settle Auction'.", { id: 'cancel-auction' });
           return;
       }
 
@@ -295,7 +383,7 @@ function Auction() {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          clock: SYSVAR_RENT_PUBKEY,
+          clock: SYSVAR_CLOCK_PUBKEY,
         })
         .instruction();
 
@@ -304,9 +392,10 @@ function Auction() {
       const txSignature = await program.provider.sendAndConfirm(transaction, []);
       console.log("Cancel auction successful, signature:", txSignature);
 
+      // Remove from the live list immediately
       const updatedListedNfts = listedNftsForAuction.filter(nft => nft.mintAddress !== nftToCancel.mintAddress);
       setListedNftsForAuction(updatedListedNfts);
-      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedListedNfts));
+      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedListedNfts)); // Update local storage too
       setCurrentBids(prev => {
         const newBids = { ...prev };
         delete newBids[nftToCancel.mintAddress];
@@ -325,7 +414,7 @@ function Auction() {
               if (errorMessage.includes("AccountNotInitialized")) {
                   errorMessage = "Cancel failed: Auction listing not found on-chain. Did it fail to start initially or already cancelled?";
               } else if (errorMessage.includes("AuctionIsActive")) {
-                  errorMessage = "Cannot cancel: Auction is still active or has not ended yet.";
+                  errorMessage = "Cannot cancel: Auction is still active or has not ended yet. If there are bids, settle instead.";
               } else if (errorMessage.includes("IllegalCancelAuction")) {
                   errorMessage = "Cannot cancel: Bids are present for this auction. Must settle instead.";
               }
@@ -373,12 +462,35 @@ function Auction() {
       return;
     }
 
+    // Use the onChainCurrentTime state variable for accurate start/end checks
+    if (onChainCurrentTime === 0) { // Should not happen if loading state is handled
+        toast.error("Blockchain time not synchronized yet. Please wait a moment.", { id: 'place-bid' });
+        setBidLoadingStates(prev => ({ ...prev, [nft.mintAddress]: false }));
+        return;
+    }
+    if (onChainCurrentTime >= auctionAcc.endTime.toNumber()) {
+      toast.error("This auction has already ended!", { id: 'place-bid' });
+      // Remove from UI if it ended
+      setListedNftsForAuction(prev => {
+        const updated = prev.filter(item => item.mintAddress !== nft.mintAddress);
+        localStorage.setItem('listedNftsForAuction', JSON.stringify(updated));
+        return updated;
+      });
+      setBidLoadingStates(prev => ({ ...prev, [nft.mintAddress]: false }));
+      return;
+    }
+    if (onChainCurrentTime < auctionAcc.startTime.toNumber()) {
+        toast.error("This auction has not started yet!", { id: 'place-bid' });
+        setBidLoadingStates(prev => ({ ...prev, [nft.mintAddress]: false }));
+        return;
+    }
+
     const onChainCurrentBidLamports = new anchor.BN(auctionAcc.currentBid.toString());
     const onChainInitialPriceLamports = new anchor.BN(auctionAcc.satrtPrice.toString());
 
     const minimumBidRequiredLamports = onChainCurrentBidLamports.isZero()
         ? onChainInitialPriceLamports
-        : onChainCurrentBidLamports.add(new anchor.BN(1));
+        : onChainCurrentBidLamports.add(new anchor.BN(1)); // Increment by 1 lamport
 
     const minimumBidRequiredSol = minimumBidRequiredLamports.toNumber() / LAMPORTS_PER_SOL;
 
@@ -423,7 +535,9 @@ function Auction() {
     toast.loading(`Placing bid of ${parsedBidAmount} SOL for ${nft.name}...`, { id: 'place-bid' });
     try {
       const remainingAccounts = [];
-      if (onChainCurrentBidLamports.gtn(0) && auctionAcc.highestBidder.toBase58() !== SystemProgram.programId.toBase58()) {
+      // If there's an existing highest bidder (and it's not the SystemProgram default, which means no bids yet),
+      // add them to remaining accounts for SOL refund.
+      if (auctionAcc.currentBid.gtn(0) && auctionAcc.highestBidder.toBase58() !== SystemProgram.programId.toBase58()) {
         remainingAccounts.push({
           pubkey: auctionAcc.highestBidder,
           isWritable: true,
@@ -446,6 +560,7 @@ function Auction() {
         bidPda: bidPda,
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
+        clock: SYSVAR_CLOCK_PUBKEY,
       };
 
       const placeBidInstruction = await program.methods.placeBid(
@@ -467,15 +582,17 @@ function Auction() {
       const txSign = await program.provider.connection.sendRawTransaction(signedTransaction.serialize());
       await program.provider.connection.confirmTransaction(txSign, "confirmed");
 
+      // Update bids immediately in UI for optimistic display
       setCurrentBids(prev => ({
         ...prev,
         [nft.mintAddress]: parsedBidAmount,
       }));
 
+      // Update listedNftsForAuction with the new bid and highest bidder
       setListedNftsForAuction(prevNfts => {
           const updatedNfts = prevNfts.map(item =>
               item.mintAddress === nft.mintAddress
-                  ? { ...item, currentBid: parsedBidAmount, highestBidder: publicKey.toBase58() }
+                  ? { ...item, currentBid: parsedBidAmount, highestBidder: publicKey.toBase58() } // Update highestBidder as well
                   : item
           );
           localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedNfts));
@@ -491,6 +608,28 @@ function Auction() {
     } catch (error) {
       console.error("Error placing bid:", error);
       let errorMessage = `Failed to place bid. Error: ${error.message || 'Unknown error'}`;
+
+      // --- NEW LOGIC FOR HANDLING USER CANCELLATION ---
+      if (error.name === 'WalletSignTransactionError') {
+          // This is a common error message for rejection across many adapters
+          errorMessage = "Transaction cancelled by user.";
+          toast.error(errorMessage, { id: 'place-bid', duration: 3000 });
+          return; // Exit early, no need for further error parsing or general error toast
+      }
+      if (error.name === 'WalletAdapterRpcError' && error.message.includes('User rejected the request')) {
+          // Some adapters might throw an RpcError with rejection message
+          errorMessage = "Transaction cancelled by user.";
+          toast.error(errorMessage, { id: 'place-bid', duration: 3000 });
+          return; // Exit early
+      }
+      // Often, a simple click outside might just be a generic "transaction rejected" or "cancelled"
+      if (error.message && (error.message.includes('User rejected') || error.message.includes('cancelled'))) {
+          errorMessage = "Transaction cancelled by user.";
+          toast.error(errorMessage, { id: 'place-bid', duration: 3000 });
+          return; // Exit early
+      }
+      // --- END NEW LOGIC ---
+
       if (error.logs) {
           const programLog = error.logs.find(log => log.includes("Program log: AnchorError"));
           if (programLog) {
@@ -505,8 +644,10 @@ function Auction() {
                   errorMessage = "Bid failed: Insufficient SOL balance in your wallet.";
               } else if (errorMessage.includes("CurrentBidderIsNotValid")) {
                   errorMessage = "Bid failed: You are the seller or already the highest bidder (or an invalid bidder).";
-              }
+              } else {
+            errorMessage = "user rejected place bid"
           }
+          } 
       }
       toast.error(errorMessage, { id: 'place-bid', duration: 6000 });
     } finally {
@@ -554,15 +695,6 @@ function Auction() {
         publicKey
       );
 
-      const [bidPda] = PublicKey.findProgramAddressSync(
-          [
-              anchor.utils.bytes.utf8.encode("escrow"),
-              mintPublicKey.toBuffer(),
-          ],
-          program.programId
-      );
-
-
       let auctionAcc;
       try {
           auctionAcc = await program.account.auction.fetch(auctionPda);
@@ -572,24 +704,15 @@ function Auction() {
           return;
       }
 
-      const clockAcc = await connection.getAccountInfo(anchor.web3.SYSVAR_CLOCK_PUBKEY);
-      console.log("clock acc : " , clockAcc);
-
-      const onChainNow =new anchor.BN(clockAcc.data.slice(8, 16),"le").toNumber();
-      console.log("on chain now : ",onChainNow);
-
-      const hasEnded = onChainNow >= auctionAcc.endTime.toNumber();
-      console.log("hasEnded : ",hasEnded);
-
+      // Use the onChainCurrentTime state variable for consistency
+      const hasEnded = onChainCurrentTime >= auctionAcc.endTime.toNumber();
       const noBids = auctionAcc.currentBid.isZero() || auctionAcc.highestBidder.toBase58() === SystemProgram.programId.toBase58();
 
       if (!hasEnded) {
-        console.log("auction is still active");
           toast.error("Cannot retrieve NFT: Auction has not ended yet.", { id: 'retrieve-nft' });
           return;
       }
       if (!noBids) {
-        // console.log("2");
           toast.error("Cannot retrieve NFT: Bids were placed. Use the 'Settle Auction' function instead.", { id: 'retrieve-nft' });
           return;
       }
@@ -608,11 +731,19 @@ function Auction() {
           );
       }
 
+      // Assuming `cancelAuction` is designed to also handle retrieval for no-bid ended auctions
+      // If you have a separate instruction like `retrieveNoBidAuction`, use that instead.
       const retrieveNftInstruction = await program.methods.cancelAuction()
         .accounts({
           seller: publicKey,
-          mint: mintPublicKey,
+          nftMint: mintPublicKey,
+          auctionAccount: auctionPda,
+          programNftAccount: programNftAccount,
+          sellerTokenAccount: sellerTokenAccount,
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          clock: SYSVAR_CLOCK_PUBKEY,
         })
         .instruction();
 
@@ -621,9 +752,10 @@ function Auction() {
       const txSignature = await program.provider.sendAndConfirm(transaction, []);
       console.log("NFT retrieved successfully, signature:", txSignature);
 
+      // Remove from the live list and local storage
       const updatedListedNfts = listedNftsForAuction.filter(nft => nft.mintAddress !== nftToRetrieve.mintAddress);
       setListedNftsForAuction(updatedListedNfts);
-      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedNfts));
+      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedListedNfts));
       setCurrentBids(prev => {
         const newBids = { ...prev };
         delete newBids[nftToRetrieve.mintAddress];
@@ -642,7 +774,7 @@ function Auction() {
               errorMessage = programLog.split("Error Message: ")[1] || errorMessage;
               if (errorMessage.includes("AuctionIsActive")) {
                   errorMessage = "Retrieve failed: Auction is still active or has not ended yet.";
-              } else if (errorMessage.includes("IllegalCancelAuction")) {
+              } else if (errorMessage.includes("IllegalCancelAuction")) { // This error suggests bids exist.
                   errorMessage = "Retrieve failed: Bids are present for this auction. Cannot retrieve, must settle.";
               } else if (errorMessage.includes("AccountNotInitialized")) {
                   errorMessage = "Retrieve failed: Auction or associated accounts not found on-chain.";
@@ -657,15 +789,13 @@ function Auction() {
   };
 
 
-  if (loading) {
+  if (loading || onChainCurrentTime === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black text-white flex justify-center items-center p-4">
-        <p className="text-xl md:text-2xl font-semibold animate-pulse">Loading live auctions...</p>
+        <p className="text-xl md:text-2xl font-semibold animate-pulse">Synchronizing with blockchain time...</p>
       </div>
     );
   }
-
-  const now = Math.floor(Date.now() / 1000);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black text-gray-100 p-4 md:p-8 custom-scrollbar-hidden">
@@ -673,12 +803,7 @@ function Auction() {
       <AnimatePresence>
         {showFullScreenSuccess && (
           <motion.div
-            // CHANGE THIS LINE: from `bg-gradient-to-br from-green-700/80 to-blue-700/80`
-            // TO ONE OF THESE:
-            // 1. Fully transparent: `bg-transparent`
-            // 2. Semi-transparent dark overlay: `bg-black/70` or `bg-gray-900/70`
-            // 3. Semi-transparent green overlay: `bg-green-500/30`
-            className="fixed inset-0 bg-transparent bg-opacity-75 backdrop-blur-lg  flex flex-col items-center justify-center z-50 text-white"
+            className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-lg  flex flex-col items-center justify-center z-50 text-white"
             variants={fullScreenSuccessVariants}
             initial="hidden"
             animate="visible"
@@ -703,7 +828,7 @@ function Auction() {
               ></motion.path>
             </motion.svg>
             <motion.h2
-              className="text-5xl md:text-7xl font-extrabold mb-4 text-center"
+              className="text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-teal-400 via-blue-400 to-purple-500 mb-4 text-center"
               variants={textVariants}
             >
               Bid Placed!
@@ -735,6 +860,12 @@ function Auction() {
           <p className='text-lg md:text-xl text-gray-400 mt-4 max-w-xl mx-auto'>
             List your NFTs from your collection to see them here.
           </p>
+          {/* Optional: Add a link to the settlement page here */}
+          {connected && publicKey && (
+            <p className="text-gray-400 mt-4">
+              Check your <NavLink to="/marketplace/my-auctions" className="text-purple-400 hover:underline">My Auctions</NavLink> page for ended auctions and claims.
+            </p>
+          )}
         </div>
       ) : (
         <AnimatePresence>
@@ -746,9 +877,11 @@ function Auction() {
           >
             {listedNftsForAuction.map((nft) => {
               const auctionEndTime = nft.startTime + nft.duration;
-              const timeLeft = auctionEndTime - now;
-              const hasStarted = now >= nft.startTime;
-              const hasEnded = now >= auctionEndTime;
+              // Use localDisplayTime for the visual countdown
+              const timeLeftForDisplay = auctionEndTime - localDisplayTime;
+              // Use onChainCurrentTime for the definitive auction state logic (hasStarted, hasEnded)
+              const hasStartedOnChain = onChainCurrentTime >= nft.startTime;
+              const hasEndedOnChain = onChainCurrentTime >= auctionEndTime;
 
               const nftCurrentBid = currentBids[nft.mintAddress];
               const isBidLoading = bidLoadingStates[nft.mintAddress];
@@ -785,8 +918,8 @@ function Auction() {
                       </span>
                     </p>
                     <p className="text-sm text-gray-300 mt-auto">
-                      Time Left: <span className={hasEnded ? "text-red-900 font-bold" : "text-yellow-400 font-bold"}>
-                        {formatTimeLeft(timeLeft)}
+                      Time Left: <span className={timeLeftForDisplay <= 0 ? "text-red-900 font-bold" : "text-yellow-400 font-bold"}>
+                        {formatTimeLeft(timeLeftForDisplay)}
                       </span>
                     </p>
                     <p className="text-gray-500 text-xs mt-2 break-all">
@@ -795,7 +928,7 @@ function Auction() {
 
                     <div className="mt-4">
                       {connected && publicKey ? (
-                        hasEnded ? (
+                        hasEndedOnChain ? ( // Use onChainCurrentTime for definitive end check
                           publicKey.toBase58() === nft.seller ? (
                               (nftCurrentBid === undefined || nftCurrentBid === 0) ? (
                                   <motion.button
@@ -804,42 +937,48 @@ function Auction() {
                                       onClick={() => handleRetrieveNft(nft)}
                                       className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
                                   >
-                                      Retrieve NFT
+                                      Retrieve NFT (No Bids)
                                   </motion.button>
                               ) : (
                                   <p className="text-center text-green-400 font-extrabold text-base md:text-lg animate-pulse">
-                                      Auction Ended (Claim/Settle)
+                                      Auction Ended (Seller: Settle/Claim)
                                   </p>
                               )
                           ) : (
-                                  <p className="text-center text-red-900 font-extrabold text-base md:text-lg">Auction Ended</p>
+                              <p className="text-center text-red-900 font-extrabold text-base md:text-lg">Auction Ended</p>
                           )
-                        ) : !hasStarted ? (
+                        ) : !hasStartedOnChain ? ( // Use onChainCurrentTime for definitive start check
                           publicKey.toBase58() === nft.seller ? (
-                            <p className="text-center text-orange-400 font-extrabold text-base md:text-lg">Auction Not Started</p>
-
+                            <p className="text-center text-orange-400 font-extrabold text-base md:text-lg">Auction Not Started Yet (Your NFT)</p>
                           ) : (
-                            <p className="text-center text-orange-400 font-extrabold text-base md:text-lg">Auction Not Started Yet</p>
+                            <p className="text-center text-gray-400 text-sm">Auction not started</p>
                           )
-                        ) : (
+                        ) : ( // Auction is live and started (on-chain)
                           publicKey.toBase58() === nft.seller ? (
-                            <p className="text-center text-red-500 font-extrabold text-base md:text-lg">Auction Live (Your NFT)</p>
-
+                            <p className="text-center text-orange-400 font-extrabold text-base md:text-lg">Auction Started (Your NFT)</p>
+                            // <motion.button
+                            //     whileHover={{ scale: 1.05 }}
+                            //     whileTap={{ scale: 0.95 }}
+                            //     onClick={() => handleCancelAuction(nft)}
+                            //     className="w-full bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
+                            // >
+                            //     Cancel Auction
+                            // </motion.button>
                           ) : (
                             <motion.button
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => handlePlaceBid(nft)}
-                              className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
                               disabled={isBidLoading}
+                              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {isBidLoading ? 'Processing...' : 'Place Bid'}
+                              {isBidLoading ? "Placing Bid..." : "Place Bid"}
                             </motion.button>
                           )
                         )
                       ) : (
-                        <p className="text-center text-gray-400 text-sm py-2">
-                          Connect wallet to participate
+                        <p className="mt-4 text-center text-gray-400 text-sm">
+                          Connect wallet to interact
                         </p>
                       )}
                     </div>
@@ -853,11 +992,12 @@ function Auction() {
 
       <style jsx>{`
         .custom-scrollbar-hidden {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
+          -ms-overflow-style: none; /* IE and Edge */
+          scrollbar-width: none; /* Firefox */
         }
+
         .custom-scrollbar-hidden::-webkit-scrollbar {
-          display: none;
+          display: none; /* Chrome, Safari, Opera */
         }
       `}</style>
     </div>

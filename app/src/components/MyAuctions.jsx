@@ -9,6 +9,10 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID, Metadata } from '@metaplex-foundation/mpl-token-metadata'; // Import if you need metadata
 
+const METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbTFW3DvdbRrVfadqotrsmoBH"
+);
+
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
   visible: {
@@ -94,14 +98,24 @@ function MyAuctions() {
   // and filter them for the connected user.
   const fetchMyEndedAuctions = useCallback(async () => {
     if (!program || !publicKey) {
-      setLoading(false);
+      setLoading(false); // Ensure loading is false if prerequisites are not met
       return;
     }
 
-    setLoading(true);
+    setLoading(true); // Set loading true at the start of fetch
     try {
       const allAuctionAccounts = await program.account.auction.all();
-      const now = Math.floor(Date.now() / 1000); // Current time
+
+      // Fetch on-chain time once at the beginning for consistency
+      let onChainNow = Math.floor(Date.now() / 1000); // Fallback to local time
+      try {
+        const clockAcc = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
+        if (clockAcc) {
+          onChainNow = new anchor.BN(clockAcc.data.slice(32, 40), "le").toNumber(); // Correct offset for unix_timestamp
+        }
+      } catch (clockError) {
+        console.warn("Failed to fetch on-chain clock, using local time:", clockError);
+      }
 
       const relevantAuctions = [];
 
@@ -109,26 +123,31 @@ function MyAuctions() {
         const auctionData = account.account; // The actual data of the auction account
         const mintAddress = auctionData.nftMint.toBase58();
         const sellerAddress = auctionData.seller.toBase58();
-        const highestBidderAddress = auctionData.highestBidder.toBase58();
+        const highestBidderAddress = auctionData.highestBidder.toBase58(); // Already a PublicKey, convert to string
         const auctionEndTime = auctionData.endTime.toNumber();
 
-        const isEnded = now >= auctionEndTime;
-        const isSeller = publicKey.toBase55() === sellerAddress;
-        const isHighestBidder = publicKey.toBase55() === highestBidderAddress;
+        const isSeller = publicKey.toBase58() === sellerAddress;
+        const isHighestBidder = publicKey.toBase58() === highestBidderAddress;
 
-        // Only include if auction has ended AND current user is either seller or highest bidder
-        if (isEnded && (isSeller || isHighestBidder)) {
+        // --- UPDATED FILTERING LOGIC HERE ---
+        const isEnded = onChainNow >= auctionEndTime; // Check if the auction has ended based on time
+        const isSettled = auctionData.auctionStatus.settled !== undefined;
+        const isCancelled = auctionData.auctionStatus.cancelled !== undefined;
+
+        // Only include if auction has time-wise ended, current user is seller/highest bidder, AND NOT settled/cancelled
+        if (isEnded && (isSeller || isHighestBidder) && !isSettled && !isCancelled) {
           // Fetch NFT metadata to get image, name, symbol etc.
           let nftDetails = {
             mintAddress: mintAddress,
             seller: sellerAddress,
-            initialPrice: auctionData.satrtPrice.toNumber() / LAMPORTS_PER_SOL,
+            initialPrice: auctionData.satrtPrice.toNumber() / LAMPORTS_PER_SOL, // Keeping satrtPrice as per your Rust struct
             currentBid: auctionData.currentBid.toNumber() / LAMPORTS_PER_SOL,
-            highestBidder: highestBidderAddress,
+            // Original highestBidder is a PublicKey, convert to string if not already
+            highestBidder: highestBidderAddress, // This is already a string
             endTime: auctionEndTime, // Keep this for display or further checks
             isSeller: isSeller,
             isHighestBidder: isHighestBidder,
-            name: "Unknown NFT",
+            name: "Unknown NFT", // Default fallback name
             symbol: "",
             image: "",
             auctionPda: account.publicKey.toBase58(), // The PDA for the auction account
@@ -139,14 +158,15 @@ function MyAuctions() {
             const [metadataPda] = PublicKey.findProgramAddressSync(
               [
                 Buffer.from("metadata"),
-                TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+                METADATA_PROGRAM_ID.toBuffer(),
                 new PublicKey(mintAddress).toBuffer(),
               ],
-              TOKEN_METADATA_PROGRAM_ID
+              METADATA_PROGRAM_ID
             );
             const metadataAccountInfo = await connection.getAccountInfo(metadataPda);
             if (metadataAccountInfo) {
               const metadata = Metadata.fromAccountInfo(metadataAccountInfo)[0];
+              console.log("metadata : ",metadata); // For debugging
               nftDetails.name = metadata.data.name.replace(/\0/g, ''); // Remove null bytes
               nftDetails.symbol = metadata.data.symbol.replace(/\0/g, '');
               // Fetch image from URI (requires another fetch)
@@ -159,27 +179,39 @@ function MyAuctions() {
             }
           } catch (metaError) {
             console.warn(`Could not fetch metadata for ${mintAddress}:`, metaError);
+            nftDetails.name = "NFT (Metadata Error)"; // Fallback if metadata fails
           }
           relevantAuctions.push(nftDetails);
         }
       }
+
+      // Sort relevantAuctions to show most recently ended first
+      relevantAuctions.sort((a, b) => b.endTime - a.endTime);
+
       setEndedAuctions(relevantAuctions);
     } catch (error) {
       console.error("Error fetching ended auction accounts:", error);
       toast.error("Failed to load your ended auctions.");
     } finally {
-      setLoading(false);
+      setLoading(false); // Set loading to false once fetching is complete (success or error)
     }
-  }, [program, publicKey, connection]);
+  }, [program, publicKey, connection]); // Dependencies: program, publicKey, connection
 
   useEffect(() => {
     if (connected && program) {
       fetchMyEndedAuctions();
+      // Periodically refetch every 30 seconds to update status
+      const intervalId = setInterval(fetchMyEndedAuctions, 30000);
+      // Clean up the interval when the component unmounts or dependencies change
+      return () => clearInterval(intervalId);
+
     } else if (!connected) {
       setEndedAuctions([]); // Clear if wallet disconnects
-      setLoading(false);
+      setLoading(false); // Ensure loading is false if wallet disconnects
     }
+    // Dependencies: connected, program, fetchMyEndedAuctions
   }, [connected, program, fetchMyEndedAuctions]);
+
 
   const handleSettleAuction = async (nftToSettle) => {
     if (!connected || !publicKey) {
@@ -197,7 +229,7 @@ function MyAuctions() {
       const mintPublicKey = new PublicKey(nftToSettle.mintAddress);
       const auctionAccountPda = new PublicKey(nftToSettle.auctionPda); // Use the PDA fetched earlier
       const sellerPublicKey = new PublicKey(nftToSettle.seller);
-      const highestBidderPublicKey = new PublicKey(nftToSettle.highestBidder);
+      const highestBidderPublicKey = new PublicKey(nftToSettle.highestBidder); // Already a PublicKey string
 
       const programNftAccount = getAssociatedTokenAddressSync(
         mintPublicKey,
@@ -235,9 +267,10 @@ function MyAuctions() {
 
       // Ensure auction has ended and there's a highest bidder
       const clockAcc = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
-      const onChainNow = new anchor.BN(clockAcc.data.slice(8, 16), "le").toNumber();
+      const onChainNow = new anchor.BN(clockAcc.data.slice(32, 40), "le").toNumber(); // Correct offset for unix_timestamp
 
-      if (onChainNow < auctionAcc.endTime.toNumber()) {
+      // You might want to also check auctionAcc.auctionStatus here to be extra robust
+      if (onChainNow < auctionAcc.endTime.toNumber() && auctionAcc.auctionStatus.active !== undefined) {
         toast.error("Auction has not ended yet. Cannot settle.", { id: 'settle-auction' });
         return;
       }
@@ -245,49 +278,57 @@ function MyAuctions() {
         toast.error("No bids placed on this auction. Seller should use 'Retrieve NFT' instead.", { id: 'settle-auction' });
         return;
       }
+      // Also ensure it's not already settled or cancelled before attempting to settle
+      if (auctionAcc.auctionStatus.settled !== undefined) {
+        toast.error("Auction is already settled.", { id: 'settle-auction' });
+        return;
+      }
+      if (auctionAcc.auctionStatus.cancelled !== undefined) {
+        toast.error("Auction is cancelled.", { id: 'settle-auction' });
+        return;
+      }
+
 
       const transaction = new Transaction();
 
       // Ensure seller and highest bidder have their ATAs
-      const sellerAtaInfo = await connection.getAccountInfo(sellerTokenAccount);
-      if (!sellerAtaInfo) {
-          transaction.add(
-              createAssociatedTokenAccountInstruction(
-                  publicKey, // Fee payer for this ATA creation
-                  sellerTokenAccount,
-                  sellerPublicKey,
-                  mintPublicKey
-              )
-          );
+      const signerIsSeller = publicKey.toBase58() === sellerPublicKey.toBase58();
+      const signerIsHighestBidder = publicKey.toBase58() === highestBidderPublicKey.toBase58();
+
+      if (signerIsSeller) {
+          const sellerAtaInfo = await connection.getAccountInfo(sellerTokenAccount);
+          if (!sellerAtaInfo) {
+              transaction.add(
+                  createAssociatedTokenAccountInstruction(
+                      publicKey, // Fee payer for this ATA creation
+                      sellerTokenAccount,
+                      sellerPublicKey,
+                      mintPublicKey
+                  )
+              );
+          }
       }
-      const highestBidderAtaInfo = await connection.getAccountInfo(highestBidderTokenAccount);
-      if (!highestBidderAtaInfo) {
-          transaction.add(
-              createAssociatedTokenAccountInstruction(
-                  publicKey, // Fee payer for this ATA creation
-                  highestBidderTokenAccount,
-                  highestBidderPublicKey,
-                  mintPublicKey
-              )
-          );
+      if (signerIsHighestBidder) {
+          const highestBidderAtaInfo = await connection.getAccountInfo(highestBidderTokenAccount);
+          if (!highestBidderAtaInfo) {
+              transaction.add(
+                  createAssociatedTokenAccountInstruction(
+                      publicKey, // Fee payer for this ATA creation
+                      highestBidderTokenAccount,
+                      highestBidderPublicKey,
+                      mintPublicKey
+                  )
+              );
+          }
       }
 
-      const settleAuctionInstruction = await program.methods.settleAuction()
+      const settleAuctionInstruction = await program.methods.winnerNft()
         .accounts({
-          signer: publicKey, // The one initiating the settlement (seller or highest bidder)
-          nftMint: mintPublicKey,
-          auctionAccount: auctionAccountPda,
-          programNftAccount: programNftAccount,
-          seller: sellerPublicKey,
-          sellerTokenAccount: sellerTokenAccount,
-          highestBidder: highestBidderPublicKey,
-          highestBidderTokenAccount: highestBidderTokenAccount,
-          bidPda: bidPda, // The PDA holding the highest bidder's funds
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          clock: SYSVAR_CLOCK_PUBKEY,
-          // Add any other accounts required by your settle_auction instruction (e.g., royalty accounts)
+          seller:sellerPublicKey,
+          bidder:highestBidderPublicKey,
+          signer:publicKey,
+          mint:mintPublicKey,
+          tokenProgram:TOKEN_PROGRAM_ID,
         })
         .instruction();
 
@@ -298,17 +339,32 @@ function MyAuctions() {
 
       // Remove from the list after successful settlement
       setEndedAuctions(prev => prev.filter(nft => nft.mintAddress !== nftToSettle.mintAddress));
-      // Optionally update local storage here or rely on re-fetching.
       toast.success('Auction settled successfully!', { id: 'settle-auction' });
 
       setSuccessfulTxNftName(nftToSettle.name);
       setSuccessMessageType("settle");
       setShowFullScreenSuccess(true);
-      setTimeout(() => setShowFullScreenSuccess(false), 3000);
+      setTimeout(() => setShowFullScreenSuccess(3000));
 
     } catch (error) {
       console.error("Error settling auction:", error);
       let errorMessage = `Failed to settle auction. Error: ${error.message || 'Unknown error'}`;
+
+      // --- ADDED: User cancellation handling for settle auction ---
+      const errorMessageString = error.message ? error.message.toLowerCase() : '';
+      if (
+        errorMessageString.includes('user rejected') ||
+        errorMessageString.includes('transaction cancelled') ||
+        errorMessageString.includes('request rejected') ||
+        (error.name === 'WalletAdapterWalletError' && errorMessageString.includes('operation cancelled')) ||
+        (error.name === 'WalletAdapterRpcError' && errorMessageString.includes('cancelled')) ||
+        (error.name === 'Error' && errorMessageString.includes('cancelled'))
+      ) {
+          toast.dismiss('settle-auction');
+          toast.error("Transaction cancelled by user.", { id: 'user-cancelled-settle', duration: 3000 });
+          return; // Exit
+      }
+      // --- END user cancellation handling ---
 
       if (error.logs) {
           const programLog = error.logs.find(log => log.includes("Program log: AnchorError"));
@@ -382,12 +438,14 @@ function MyAuctions() {
       }
 
       const clockAcc = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
-      const onChainNow = new anchor.BN(clockAcc.data.slice(8, 16), "le").toNumber();
+      const onChainNow = new anchor.BN(clockAcc.data.slice(32, 40), "le").toNumber(); // Correct offset
 
       const hasEnded = onChainNow >= auctionAcc.endTime.toNumber();
+      // Ensure currentBid is checked against 0 and highestBidder against SystemProgram.programId
       const noBids = auctionAcc.currentBid.isZero() || auctionAcc.highestBidder.toBase58() === SystemProgram.programId.toBase58();
 
-      if (!hasEnded) {
+      if (!hasEnded) { // This check relies on clock, not auctionStatus directly.
+                       // Your program should also have a check for this.
           toast.error("Cannot retrieve NFT: Auction has not ended yet.", { id: 'retrieve-nft' });
           return;
       }
@@ -395,6 +453,16 @@ function MyAuctions() {
           toast.error("Cannot retrieve NFT: Bids were placed. Use the 'Settle Auction' function instead.", { id: 'retrieve-nft' });
           return;
       }
+      // Also ensure it's not already settled or cancelled before attempting to retrieve
+      if (auctionAcc.auctionStatus.settled !== undefined) {
+        toast.error("Auction is already settled.", { id: 'retrieve-nft' });
+        return;
+      }
+      if (auctionAcc.auctionStatus.cancelled !== undefined) {
+        toast.error("Auction is already cancelled.", { id: 'retrieve-nft' });
+        return;
+      }
+
 
       const transaction = new Transaction();
 
@@ -416,14 +484,8 @@ function MyAuctions() {
       const retrieveNftInstruction = await program.methods.cancelAuction() // Assuming this is the correct instruction
         .accounts({
           seller: publicKey,
-          nftMint: mintPublicKey,
-          auctionAccount: auctionPda,
-          programNftAccount: programNftAccount,
-          sellerTokenAccount: sellerTokenAccount,
+          mint: mintPublicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          clock: SYSVAR_CLOCK_PUBKEY, // Must be SYSVAR_CLOCK_PUBKEY in your program
         })
         .instruction();
 
@@ -439,11 +501,28 @@ function MyAuctions() {
       setSuccessfulTxNftName(nftToRetrieve.name);
       setSuccessMessageType("retrieve");
       setShowFullScreenSuccess(true);
-      setTimeout(() => setShowFullScreenSuccess(false), 3000);
+      setTimeout(() => setShowFullScreenSuccess(false),3000);
+
 
     } catch (error) {
       console.error("Error retrieving NFT:", error);
       let errorMessage = `Failed to retrieve NFT. Error: ${error.message || 'Unknown error'}`;
+
+      // --- ADDED: User cancellation handling for retrieve NFT ---
+      const errorMessageString = error.message ? error.message.toLowerCase() : '';
+      if (
+        errorMessageString.includes('user rejected') ||
+        errorMessageString.includes('transaction cancelled') ||
+        errorMessageString.includes('request rejected') ||
+        (error.name === 'WalletAdapterWalletError' && errorMessageString.includes('operation cancelled')) ||
+        (error.name === 'WalletAdapterRpcError' && errorMessageString.includes('cancelled')) ||
+        (error.name === 'Error' && errorMessageString.includes('cancelled'))
+      ) {
+          toast.dismiss('retrieve-nft');
+          toast.error("Transaction cancelled by user.", { id: 'user-cancelled-retrieve', duration: 3000 });
+          return; // Exit
+      }
+      // --- END user cancellation handling ---
 
       if (error.logs) {
           const programLog = error.logs.find(log => log.includes("Program log: AnchorError"));
@@ -490,8 +569,6 @@ function MyAuctions() {
       </div>
     );
   }
-
-  const now = Math.floor(Date.now() / 1000);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black text-gray-100 p-4 md:p-8 custom-scrollbar-hidden">
@@ -547,7 +624,7 @@ function MyAuctions() {
         transition={{ duration: 0.6 }}
         className='text-4xl sm:text-5xl md:text-6xl font-extrabold mb-10 md:mb-12 text-center text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-yellow-400 to-red-500'
       >
-        My Ended Auctions & Claims
+        Ended Auctions & Claims
       </motion.h1>
 
       {!connected ? (
@@ -638,7 +715,8 @@ function MyAuctions() {
                         )
                     )}
 
-                    {nft.isHighestBidder && nft.highestBidder.toBase58() !== SystemProgram.programId.toBase58() && (
+                    {/* Corrected line: nft.highestBidder is already a string here */}
+                    {nft.isHighestBidder && nft.highestBidder !== SystemProgram.programId.toBase58() && (
                         <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
