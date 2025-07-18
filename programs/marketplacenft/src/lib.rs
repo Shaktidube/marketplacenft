@@ -7,7 +7,7 @@ use instructions::auction::*;
 use instructions::buysell::*;
 use instructions::metadata::*;
 use instructions::mint::*;
-declare_id!("9U1c1CFEyEgEjbrxFcbAymjb4sf8VjiYhm4rYD8Zzszf");
+declare_id!("BCv1qw46pgwDujHu9TCNCqvnRmsToBYgqfEk3W58qsRH");
 
 #[program]
 pub mod marketplacenft {

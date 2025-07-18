@@ -65,13 +65,13 @@ const MintNftPage = () => {
     switch (fieldName) {
       case "nftName":
         if (!value.trim()) error = "NFT Name is required.";
-        else if (value.trim().length < 3)
-          error = "NFT Name must be at least 3 characters.";
+        else if (value.trim().length < 3 || value.trim().length > 15)
+          error = "NFT Name must be 1-15 characters.";
         break;
       case "nftSymbol":
         if (!value.trim()) error = "NFT Symbol is required.";
-        else if (value.trim().length < 1 || value.trim().length > 10)
-          error = "NFT Symbol must be 1-10 characters.";
+        else if (value.trim().length < 1 || value.trim().length > 4)
+          error = "NFT Symbol must be 1-4 characters.";
         break;
       case "nftPhoto":
         if (!value) error = "NFT Photo is required.";
@@ -197,7 +197,6 @@ const MintNftPage = () => {
           });
           uniqueCreatorAddresses.add(publicKey.toBase58());
       }
-
 
       // Add additional creators from input, ensuring no duplicates
       const parsedAdditionalCreators = additionalCreators
@@ -376,7 +375,6 @@ const MintNftPage = () => {
         console.error("Transaction logs:", error.logs); // Log all logs for deeper debugging
         const programErrorLog = error.logs.find(log => log.includes("Program log: AnchorError"));
         if (programErrorLog) {
-          // Attempt to parse Anchor program errors
           errorMessage = programErrorLog.split("Error Message: ")[1] || errorMessage;
         } else if (error.message.includes("failed to send transaction: Transaction simulation failed")) {
             // General simulation failure, could be missing required signers, insufficient lamports etc.
@@ -435,39 +433,45 @@ const MintNftPage = () => {
     fileInputRef.current.click();
   };
 
-  // Specific handler for royalty input to filter 'e' and other invalid chars
   const handleRoyaltyChange = (e) => {
-    const value = e.target.value;
-    let cleanedValue = value;
+  const rawValue = e.target.value.trim();
+  let cleanedValue = rawValue;
+  let validationError = '';
 
-    // Check if 'e' is present (case-insensitive). If so, provide a specific error.
-    if (value.toLowerCase().includes('e')) {
-        // Option 1: Remove 'e' and show a warning/error (less intrusive)
-        toast.error("Exponential notation ('e') is not allowed. Please enter a simple decimal number.", {duration: 3000});
-        cleanedValue = value.replace(/e/gi, ''); // Remove all 'e' characters
+  if (/^[eE]/.test(rawValue)) {
+    validationError = "Royalty cannot start with 'e' or 'E'";
+    toast.error(validationError, { duration: 3000 });
+    cleanedValue = '';
+  }
+
+  else if (/[eE]/.test(rawValue)) {
+    validationError = "Exponential notation (e.g. 1e5) is not allowed";
+    toast.error(validationError, { duration: 3000 });
+    cleanedValue = '';
+  }
+
+  else if (!/^\d*\.?\d{0,4}$/.test(rawValue) && rawValue !== '') {
+    validationError = "Only numbers and at most one decimal point are allowed";
+    toast.error(validationError, { duration: 3000 });
+    cleanedValue = rawValue.replace(/[^0-9.]/g, '');
+
+    const parts = cleanedValue.split('.');
+    if (parts.length > 2) {
+      cleanedValue = parts[0] + '.' + parts.slice(1).join('');
     }
+  }
 
-    // Now apply general numeric filtering if 'e' wasn't the only issue or if 'e' was removed.
-    if (cleanedValue === '') {
-        cleanedValue = '';
-    } else if (/^\d*\.?\d*$/.test(cleanedValue)) {
-        // If it matches a valid numeric string pattern (digits and max one dot)
-        // No further cleaning needed for this path
-    } else {
-        // If it contains other invalid characters (like multiple dots) after initial 'e' removal
-        cleanedValue = cleanedValue.replace(/[^0-9.]/g, ''); // Remove all non-numeric and non-decimal chars
-        const parts = cleanedValue.split('.');
-        if (parts.length > 2) {
-            cleanedValue = parts[0] + '.' + parts.slice(1).join('');
-        }
-    }
+  setRoyalty(cleanedValue);
 
-    setRoyalty(cleanedValue);
-    // Set validation error using the validateField, which will now receive a cleaned value.
-    // If 'e' was present and filtered, the validateField will still get a valid number if possible.
-    // The toast message above provides immediate feedback for 'e'.
-    setErrors((prev) => ({ ...prev, royalty: validateField("royalty", cleanedValue) }));
-  };
+  // ❗️ Only set required if completely empty
+  if (cleanedValue === '') {
+    setErrors(prev => ({ ...prev, royalty: validationError || 'Royalty is required' }));
+  } else {
+    setErrors(prev => ({ ...prev, royalty: validationError }));
+  }
+};
+
+
 
 
   return (
@@ -624,7 +628,7 @@ const MintNftPage = () => {
         {/* NEW: Additional Creators Input (re-enabled) */}
         <div>
           <label htmlFor="additionalCreators" className="block text-gray-200 text-base font-semibold mb-2">
-            Creators (Comma-separated addresses)
+            Additional Creators
           </label>
           <input
             type="text"

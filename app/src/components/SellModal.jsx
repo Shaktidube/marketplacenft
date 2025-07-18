@@ -24,9 +24,12 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
     if (!value.trim()) {
       return "Price is required.";
     }
+    // After `handlePriceChange` has cleaned the value, parseFloat should be more reliable.
+    // If it still results in NaN, it means an invalid number (like just "."), or an input
+    // that was purely non-numeric after stripping 'e' (e.g. if 'e' was the only character).
     const parsedPrice = parseFloat(value);
     if (isNaN(parsedPrice)) {
-      return "Invalid price. Please enter a number.";
+      return "Invalid price. Please enter a valid number.";
     }
     if (parsedPrice <= 0) { // Price must be positive
       return "Price must be greater than zero.";
@@ -53,6 +56,32 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
     }
   }, [isOpen]);
 
+  // NEW: handlePriceChange function to filter input
+  const handlePriceChange = (e) => {
+    const inputValue = e.target.value;
+    let cleanedValue = inputValue;
+
+    // Check for 'e' (exponential notation)
+    if (inputValue.toLowerCase().includes('e')) {
+        // Optionally provide a toast or a specific error message for 'e' here
+        // For example, a toast: toast.error("Exponential notation ('e') is not allowed.");
+        cleanedValue = inputValue.replace(/e/gi, ''); // Remove all 'e' characters
+    }
+
+    // Further clean the input: allow only digits and at most one decimal point
+    cleanedValue = cleanedValue.replace(/[^0-9.]/g, ''); // Remove all non-numeric and non-decimal chars
+    const parts = cleanedValue.split('.');
+    if (parts.length > 2) {
+        // If more than one decimal point, keep the first part and the first character after the first dot
+        cleanedValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    setPrice(cleanedValue);
+    // Validate the cleaned value immediately for real-time feedback
+    setErrors(prevErrors => ({ ...prevErrors, price: validatePrice(cleanedValue) }));
+  };
+
+
   const handleSubmit = async () => {
     // Validate the form before proceeding
     if (!validateForm()) {
@@ -62,11 +91,11 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
 
     setIsProcessing(true);
     // Call the parent's onConfirmSell function
-    await onConfirmSell(nft, parseFloat(price));
+    await onConfirmSell(nft, parseFloat(price)); // Use parseFloat on the cleaned price
     setIsProcessing(false);
     // The parent's onConfirmSell is responsible for closing the modal and showing success/failure toasts
     // For now, we'll keep onClose here, but consider if onConfirmSell should conditionally close
-    onClose();
+    // onClose();
   };
 
   if (!isOpen) return null;
@@ -80,7 +109,11 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
           initial="hidden"
           animate="visible"
           exit="hidden"
-          onClick={onClose}
+          onClick={() => {setIsProcessing(false);
+            setErrors(false);
+            setPrice(false);
+            onClose();
+          }}
         >
           <motion.div
             className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-2xl relative border border-gray-700"
@@ -91,7 +124,11 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              onClick={onClose}
+              onClick={() => {setIsProcessing(false);
+            setErrors(false);
+            setPrice(false);
+            onClose();
+          }}
               className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
               aria-label="Close"
             >
@@ -124,19 +161,15 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
                 Selling Price (SOL)
               </label>
               <input
-                type="number"
+                type="number" // Keep type="number" for mobile keyboard and other native benefits
                 id="price"
                 value={price}
-                onChange={(e) => {
-                  setPrice(e.target.value);
-                  // Optional: Validate on change to provide real-time feedback
-                  setErrors(prevErrors => ({ ...prevErrors, price: validatePrice(e.target.value) }));
-                }}
+                onChange={handlePriceChange} // Use the new handler here!
                 placeholder="e.g., 0.5 SOL"
                 className={`w-full p-3 bg-gray-700 text-white rounded-md border focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none
                   ${errors.price ? "border-red-500" : "border-gray-600"}`} 
                 step="0.01"
-                min="0" // Set min to 0, actual validation for > 0 is in JS
+                min="0"
                 required
                 disabled={isProcessing}
               />
@@ -149,7 +182,6 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSubmit}
-              // Removed onSubmit={handleSubmit} from here, it should only be on the <form> tag if present
               className={`w-full py-3 rounded-md font-semibold text-white transition-all duration-200
                 ${isProcessing ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'}
               `}
@@ -164,4 +196,4 @@ function SellModal({ isOpen, onClose, nft, onConfirmSell }) {
   );
 }
 
-export default SellModal;
+export default SellModal; 

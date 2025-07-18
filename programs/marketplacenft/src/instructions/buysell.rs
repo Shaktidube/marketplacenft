@@ -71,6 +71,17 @@ pub fn cancel_listing(ctx: Context<CloseListing>) -> Result<()> {
     token_interface::transfer_checked(cpi_ctx, 1, ctx.accounts.mint.decimals)?;
     listing.status = ListingStatus::Cancelled;
 
+    let close_ata = CpiContext::new_with_signer(
+    ctx.accounts.token_program.to_account_info(),
+    CloseAccount {
+        account: ctx.accounts.escrow_token_account.to_account_info(),
+        destination: ctx.accounts.seller.to_account_info(), // refund rent to seller
+        authority: listing.to_account_info(),
+    },
+        signer_seeds_arr
+    );
+    token_interface::close_account(close_ata)?;
+
     Ok(())
 }
 

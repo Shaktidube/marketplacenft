@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import * as anchor from "@coral-xyz/anchor";
 import idl from "../idl/marketplacenft.json";
+// import idl from "../idl/marketplacenft.json"
 
 import { PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js'; // Added SystemProgram, SYSVAR_RENT_PUBKEY
 import { Helius } from 'helius-sdk';
@@ -97,6 +98,36 @@ function BuySell() {
   const isPopupVisible = useWalletPopupDetection();
   const observerRef = useRef(null);
   const navigate = useNavigate();
+  const [walletPopupVisible, setWalletPopupVisible] = useState(false);
+
+
+  useEffect(() => {
+  let animationFrameId;
+
+  const WALLET_SELECTOR = '.sf-wallet-adapter-modal-wrapper';
+
+  const checkPopup = () => {
+    const popup = document.querySelectorAll(WALLET_SELECTOR);
+
+    if (popup) {
+      const style = window.getComputedStyle(popup);
+      const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && popup.offsetHeight > 0;
+
+      setWalletPopupVisible(isVisible);
+    } else {
+      setWalletPopupVisible(false);
+    }
+
+    animationFrameId = requestAnimationFrame(checkPopup);
+  };
+
+  animationFrameId = requestAnimationFrame(checkPopup);
+
+  return () => {
+    cancelAnimationFrame(animationFrameId);
+  };
+}, []);
+
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -259,96 +290,92 @@ function BuySell() {
     setIsSellModalOpen(false);
   }, []);
 
+
   const handleConfirmSell = useCallback(async (nft, price) => {
-    toast.loading(`Listing ${nft.name} for ${price} SOL...`, { id: 'sell-nft-action' });
-    try {
-      // Simulate blockchain transaction delay
-      // await new Promise(resolve => setTimeout(resolve, 2000)); // Remove if you're doing a real transaction
+  toast.loading(`Listing ${nft.name} for ${price} SOL...`, { id: 'sell-nft-action' });
 
-      const listingPriceInLamports = new anchor.BN(price * anchor.web3.LAMPORTS_PER_SOL);
-      console.log("createListing price : ",listingPriceInLamports.toString());
-      console.log("nft mint address : " , nft.mintAddress);
+  try {
+    const listingPriceInLamports = new anchor.BN(price * anchor.web3.LAMPORTS_PER_SOL);
+    const listNftInstruction = await program.methods.createListing(listingPriceInLamports)
+      .accounts({
+        seller: publicKey,
+        mint: new PublicKey(nft.mintAddress),
+        tokenProgram: TOKEN_PROGRAM_ID,
+      })
+      .instruction();
 
-      // --- Anchor Instruction Call ---
-      const listNftInstruction = await program.methods.createListing(listingPriceInLamports)
-        .accounts({
-          seller: publicKey, // Use publicKey directly here
-          mint: new PublicKey(nft.mintAddress), 
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .instruction();
+    const transaction = new Transaction();
+    transaction.add(listNftInstruction);
 
-      const transaction = new Transaction();
-      transaction.add(listNftInstruction); // Changed variable name to avoid confusion
+    const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.feePayer = publicKey;
 
-      const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
-      transaction.recentBlockhash = blockhash;
-      transaction.lastValidBlockHeight = lastValidBlockHeight;
+    // ❗️ Popup should be triggered on this line
+    const signedTransaction = await wallet.adapter.signTransaction(transaction);
 
-      transaction.feePayer = publicKey;
+    const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
+    await provider.connection.confirmTransaction(txSign, "confirmed");
 
-      const signedTransaction = await wallet.adapter.signTransaction(transaction);
-      const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
-      await provider.connection.confirmTransaction(txSign, "confirmed");
+    // Update localStorage and UI
+    const listedNftWithPrice = { ...nft, sellPrice: price, seller: publicKey.toBase58() };
+    const storedListedNfts = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
+    const updatedListedNfts = [...storedListedNfts, listedNftWithPrice];
+    localStorage.setItem('listedNftsForSale', JSON.stringify(updatedListedNfts));
 
-      // --- UPDATED: Use 'listedNftsForSale' ---
-      const listedNftWithPrice = { ...nft, sellPrice: price, seller: publicKey.toBase58() };
-      const storedListedNfts = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
-      const updatedListedNfts = [...storedListedNfts, listedNftWithPrice];
-      localStorage.setItem('listedNftsForSale', JSON.stringify(updatedListedNfts));
-      // --- END UPDATED ---
+    setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
+    setTotalNfts(prevTotal => prevTotal - 1);
 
-      // Optimistic update: Remove NFT from current page
-      setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
-
-      toast.success(`Successfully listed ${nft.name} for ${price} SOL!`, { id: 'sell-nft-action' });
-      setIsSellModalOpen(false);
-      
-      navigate('/marketplace/live-sell'); 
-
-    } catch (error) {
-      console.error("Error listing NFT for sale:", error);
-      toast.error(`Failed to list ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'sell-nft-action' });
-    }
-  }, [publicKey, wallet, program, provider, navigate]); // Added dependencies
+    toast.success(`Successfully listed ${nft.name} for ${price} SOL!`, { id: 'sell-nft-action' });
+    setIsSellModalOpen(false);
+    navigate('/marketplace/live-sell');
+  } catch (error) {
+    console.error("Error listing NFT for sale:", error);
+    toast.error(`Failed to list ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'sell-nft-action' });
+  } finally {
+    observer.disconnect(); // 💡 Always disconnect after use
+  }
+}, [publicKey, wallet, program, provider, navigate]);
 
   const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
     toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
     try {
-      // Simulate blockchain transaction delay
-      // await new Promise(resolve => setTimeout(resolve, 2000) ); // Remove if doing a real transaction
-
-      // Ensure initialPrice is in lamports and wrapped in BN
+ 
       const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
-      const auctionStartTimeBN = new anchor.BN(startTime); // startTime is already in seconds
-      const auctionEndTimeBN = new anchor.BN(startTime + duration); // duration is in seconds, so just add it
 
-      console.log("start time (BN): ", auctionStartTimeBN.toString());
-      console.log("initial price (lamports BN): ", initialPriceLamports.toString());
-      console.log("duration (seconds): ", duration);
-      console.log("end time (BN): ", auctionEndTimeBN.toString());
-      console.log("NFT mint address : ", nft.mintAddress);
-      console.log("Seller public key : ", publicKey.toBase58());
+      const auctionStartTimeBN = new anchor.BN(startTime); 
+      const durationBN = new anchor.BN(duration); 
+
+    
+      const calculatedEndTimeSeconds = startTime + duration; // This is the sum of timestamp + duration
+      
+      // 4. Convert the final calculated end time to Anchor.BN
+      const auctionEndTimeBN = new anchor.BN(calculatedEndTimeSeconds);
+
+      console.log("DEBUG: Initial Price (SOL):", initialPrice);
+      console.log("DEBUG: Initial Price (Lamports BN):", initialPriceLamports.toString());
+      console.log("DEBUG: Auction Start Time (raw seconds):", startTime);
+      console.log("DEBUG: Auction Start Time (BN):", auctionStartTimeBN.toString());
+      console.log("DEBUG: Auction Duration (raw seconds):", duration); // THIS IS THE KEY VALUE TO WATCH
+      console.log("DEBUG: Auction Duration (BN):", new anchor.BN(duration).toString()); // For comparison
+      console.log("DEBUG: Calculated End Time (raw seconds):", calculatedEndTimeSeconds);
+      console.log("DEBUG: Auction End Time (BN):", auctionEndTimeBN.toString());
+      console.log("DEBUG: NFT Mint Address:", nft.mintAddress);
+      console.log("DEBUG: Seller Public Key:", publicKey.toBase58());
+
 
       // setModalVisible(true);
       // --- Anchor Instruction Call ---
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
         initialPriceLamports,
-        auctionEndTimeBN, // Pass the calculated end time BN
+        durationBN, // Pass the calculated end time BN
       )
       .accounts({
         seller: publicKey, // Use publicKey directly here
         nftMint: new PublicKey(nft.mintAddress), // Convert string to PublicKey
         tokenProgram: TOKEN_PROGRAM_ID,
-        // Add other accounts required by your Anchor program's `createAuction`
-        // Example:
-        // sellerTokenAccount: yourSellerTokenAccount,
-        // auctionProgramAta: yourAuctionProgramAta,
-        // systemProgram: SystemProgram.programId,
-        // associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        // rent: SYSVAR_RENT_PUBKEY,
       })
       .instruction();
 
@@ -402,83 +429,6 @@ function BuySell() {
       toast.error(`Failed to start auction for ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'auction-nft-action' });
     }
   }, [publicKey, wallet, program, provider, navigate]); // Added dependencies
-
-
-  // const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
-  //   toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
-    
-  //   // Track wallet popup state
-  //   let isPopupOpen = false;
-  //   let observer;
-
-  //   try {
-  //     // Setup MutationObserver to detect wallet popup
-  //     const setupPopupObserver = () => {
-  //       observer = new MutationObserver((mutations) => {
-  //         mutations.forEach((mutation) => {
-  //           const popupElement = document.querySelector('.solflare-wallet-adapter-modal'); // Adjust selector as needed
-            
-  //           if (popupElement && !isPopupOpen) {
-  //             console.log("Wallet popup appeared on screen");
-  //             isPopupOpen = true;
-  //           } else if (!popupElement && isPopupOpen) {
-  //             console.log("Wallet popup disappeared from screen");
-  //             isPopupOpen = false;
-  //           }
-  //         });
-  //       });
-
-  //       observer.observe(document.body, {
-  //         childList: true,
-  //         subtree: true
-  //       });
-  //     };
-
-  //     setupPopupObserver();
-
-  //     const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
-  //     const auctionStartTimeBN = new anchor.BN(startTime);
-  //     const auctionEndTimeBN = new anchor.BN(startTime + duration);
-
-  //     // Trigger wallet popup
-  //     setModalVisible(true);
-
-  //     const startAuctionInstruction = await program.methods.createAuction(
-  //       auctionStartTimeBN,
-  //       initialPriceLamports,
-  //       auctionEndTimeBN,
-  //     )
-  //     .accounts({
-  //       seller: publicKey,
-  //       nftMint: new PublicKey(nft.mintAddress),
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //     })
-  //     .instruction();
-
-  //     const transaction = new Transaction();
-  //     transaction.add(startAuctionInstruction);
-
-  //     const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
-  //     transaction.recentBlockhash = blockhash;
-  //     transaction.lastValidBlockHeight = lastValidBlockHeight;
-  //     transaction.feePayer = publicKey;
-
-  //     const signedTransaction = await wallet.adapter.signTransaction(transaction);
-  //     const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
-
-  //     await provider.connection.confirmTransaction(txSign, "confirmed");
-
-  //     // ... rest of your success handling code ...
-
-  //   } catch (error) {
-  //     console.error("Error starting auction:", error);
-  //     toast.error(`Failed to start auction for ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'auction-nft-action' });
-  //   } finally {
-  //     // Clean up observer
-  //     if (observer) observer.disconnect();
-  //     setModalVisible(false); // Ensure popup is closed
-  //   }
-  // }, [publicKey, wallet, program, provider, navigate, setModalVisible]);
 
 
   const goToNextPage = () => {
@@ -689,6 +639,18 @@ function BuySell() {
           />
         </>
       )}
+
+      {walletPopupVisible && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-60 z-[9999] pointer-events-auto flex items-center justify-center"
+          style={{ backdropFilter: 'blur(3px)' }}
+        >
+          <p className="text-white text-xl font-semibold animate-pulse">
+            🔐 Waiting for wallet confirmation...
+          </p>
+        </div>
+      )}
+
       <style jsx>{`
         .custom-scrollbar-hidden {
           -ms-overflow-style: none; /* IE and Edge */

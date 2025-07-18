@@ -474,7 +474,7 @@ pub fn winner_nft<'info>(ctx: Context<'_, '_, '_, 'info, WinnerNft<'info>>) -> R
     require!(ctx.accounts.signer.key() == auction_acc.highest_bidder || ctx.accounts.signer.key() == auction_acc.seller , AuctionErrorCode::UnAuthorizedSigner);
 
     require!(current_timestamp >= auction_acc.end_time , AuctionErrorCode::AuctionIsActive);
-    require!(auction_acc.highest_bidder == ctx.accounts.bidder.key() , AuctionErrorCode::BidderIsNotValidWinner);
+    // require!(auction_acc.highest_bidder == ctx.accounts.bidder.key() , AuctionErrorCode::BidderIsNotValidWinner);
 
     require!(
         ctx.accounts.escrow_token_account.amount == 1,

@@ -590,7 +590,7 @@ describe("create token account", () => {
 
   it.skip("create auction", async () => {
     const mintNFTKeypair = new PublicKey(
-      "EJAdeA1b4ftJvsgVJ28X7Ci51FP5US4NG7Kc8uudr3i8"
+      "ESucMEX9Sm68NQNzxqAcEpp9fQd2sAoBogmLEBvj9Bcs"
     );
 
     // for seller ----------------------------------------------
@@ -624,7 +624,7 @@ describe("create token account", () => {
       tx.add(createSellerAta);
     }
 
-    const startTime = new anchor.BN(1752573484);
+    const startTime = new anchor.BN(1752831040);
     console.log("start time : ", startTime.toString());
 
     const initialPrice = new anchor.BN(100000000);
@@ -839,15 +839,15 @@ describe("create token account", () => {
     }
   });
 
-  it.skip(" winner nft ", async () => {
+  it.only(" winner nft ", async () => {
     const mintNFkeypair = new PublicKey(
-      "8yezVNqw13ueNDpQjFnrZhoF9yhEW3ke8RT8GUSgAj92"
+      "ESucMEX9Sm68NQNzxqAcEpp9fQd2sAoBogmLEBvj9Bcs"
     );
 
     const tx = new Transaction();
 
     const signerKeypair = umi.eddsa.createKeypairFromSecretKey(
-      new Uint8Array(accountTwoKeypair)
+      new Uint8Array(walletKeypair)
     );
 
     const buyerKeypair = Keypair.fromSecretKey(
