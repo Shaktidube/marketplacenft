@@ -95,38 +95,38 @@ function BuySell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { visible:setVisible , setVisible: setModalVisible } = useWalletModal(false);
-  const isPopupVisible = useWalletPopupDetection();
-  const observerRef = useRef(null);
+  // const isPopupVisible = useWalletPopupDetection();
+  // const observerRef = useRef(null);
   const navigate = useNavigate();
   const [walletPopupVisible, setWalletPopupVisible] = useState(false);
 
 
-  useEffect(() => {
-  let animationFrameId;
+//   useEffect(() => {
+//   let animationFrameId;
 
-  const WALLET_SELECTOR = '.sf-wallet-adapter-modal-wrapper';
+//   const WALLET_SELECTOR = '.sf-wallet-adapter-modal-wrapper';
 
-  const checkPopup = () => {
-    const popup = document.querySelectorAll(WALLET_SELECTOR);
+//   const checkPopup = () => {
+//     const popup = document.querySelectorAll(WALLET_SELECTOR);
 
-    if (popup) {
-      const style = window.getComputedStyle(popup);
-      const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && popup.offsetHeight > 0;
+//     if (popup) {
+//       const style = window.getComputedStyle(popup);
+//       const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && popup.offsetHeight > 0;
 
-      setWalletPopupVisible(isVisible);
-    } else {
-      setWalletPopupVisible(false);
-    }
+//       setWalletPopupVisible(isVisible);
+//     } else {
+//       setWalletPopupVisible(false);
+//     }
 
-    animationFrameId = requestAnimationFrame(checkPopup);
-  };
+//     animationFrameId = requestAnimationFrame(checkPopup);
+//   };
 
-  animationFrameId = requestAnimationFrame(checkPopup);
+//   animationFrameId = requestAnimationFrame(checkPopup);
 
-  return () => {
-    cancelAnimationFrame(animationFrameId);
-  };
-}, []);
+//   return () => {
+//     cancelAnimationFrame(animationFrameId);
+//   };
+// }, []);
 
 
   // Pagination states
@@ -334,7 +334,7 @@ function BuySell() {
     console.error("Error listing NFT for sale:", error);
     toast.error(`Failed to list ${nft.name}. Error: ${error.message || 'Unknown error'}`, { id: 'sell-nft-action' });
   } finally {
-    observer.disconnect(); // 💡 Always disconnect after use
+    // observer.disconnect(); // 💡 Always disconnect after use
   }
 }, [publicKey, wallet, program, provider, navigate]);
 
@@ -526,7 +526,7 @@ function BuySell() {
   const displayNoNftsMessage = !loading && nfts.length === 0 && totalNfts === 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br p-8 overflow-y-auto custom-scrollbar-hidden">
+    <div className="min-h-screen bg-gradient-to-br p-4 md:p-8 overflow-y-auto custom-scrollbar-hidden">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -544,15 +544,15 @@ function BuySell() {
         Showing NFTs for: <span className="font-mono text-purple-300 break-all">{publicKey ? publicKey.toBase58() : 'Connect Wallet'}</span>
       </motion.p>
 
-      {/* Button to navigate to Live Sell page */}
-      <div className="text-center mb-8">
+      {/* Button to navigate to Live Sell page - Made more responsive */}
+      <div className="text-center mb-8 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
         <Link to="/marketplace/live-sell"
-          className="px-6 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
+          className="px-6 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 w-full sm:w-auto"
         >
           View Live Sales →
         </Link>
         <Link to="/marketplace/auction"
-          className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 ml-4" // Added ml-4 for spacing
+          className="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 w-full sm:w-auto"
         >
           View Live Auctions →
         </Link>

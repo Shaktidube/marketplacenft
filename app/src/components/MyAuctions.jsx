@@ -20,13 +20,23 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
-  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
+  fetchDigitalAsset,
   Metadata,
-} from "@metaplex-foundation/mpl-token-metadata"; // Import if you need metadata
+  MPL_TOKEN_METADATA_PROGRAM_ID,
+  
+} from '@metaplex-foundation/mpl-token-metadata';
+import { Helius } from "helius-sdk";
+// import { publicKey } from "@metaplex-foundation/umi";
 
 const METADATA_PROGRAM_ID = new PublicKey(
-  "metaqbxxUerdq28cj1RbTFW3DvdbRrVfadqotrsmoBH"
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 );
+
+const HELIUS_API_KEY = "e1ed6bae-c868-4b1b-9b21-e062d5edd982";
+const HELIUS_CLUSTER = "devnet";
+
+const helius = new Helius(HELIUS_API_KEY, HELIUS_CLUSTER);
+console.log("helius"  ,helius);
 
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
@@ -144,82 +154,64 @@ function MyAuctions() {
         const auctionData = account.account;
         const mintAddress = auctionData.nftMint.toBase58();
         const sellerAddress = auctionData.seller.toBase58();
-        const highestBidderAddress = auctionData.highestBidder.toBase58(); // Already a PublicKey, convert to string
+        const highestBidderAddress = auctionData.highestBidder.toBase58();
         const auctionEndTime = auctionData.endTime.toNumber();
 
         const isSeller = publicKey.toBase58() === sellerAddress;
         const isHighestBidder = publicKey.toBase58() === highestBidderAddress;
 
-        // --- UPDATED FILTERING LOGIC HERE ---
-        const isEnded = onChainNow >= auctionEndTime; // Check if the auction has ended based on time
+        const isEnded = onChainNow >= auctionEndTime;
         const isSettled = auctionData.auctionStatus.settled !== undefined;
         const isCancelled = auctionData.auctionStatus.cancelled !== undefined;
-        const isActive = auctionData.auctionStatus.active !== undefined;
-        const end = auctionData.auctionStatus.ended !== undefined;
-        // console.log("Settle",isSettled);
-        // console.log("ENd",end);
+        // const isActive = auctionData.auctionStatus.active !== undefined; // Not used in this block
+        // const end = auctionData.auctionStatus.ended !== undefined; // Not used in this block
 
-        // Only include if auction has time-wise ended, current user is seller/highest bidder, AND NOT settled/cancelled
         if (
           isEnded &&
           (isSeller || isHighestBidder) &&
           !isSettled &&
           !isCancelled
         ) {
-          // Fetch NFT metadata to get image, name, symbol etc.
           let nftDetails = {
             mintAddress: mintAddress,
             seller: sellerAddress,
-            initialPrice: auctionData.satrtPrice.toNumber() / LAMPORTS_PER_SOL, // Keeping satrtPrice as per your Rust struct
+            initialPrice: auctionData.satrtPrice.toNumber() / LAMPORTS_PER_SOL,
             currentBid: auctionData.currentBid.toNumber() / LAMPORTS_PER_SOL,
-            highestBidder: highestBidderAddress, // This is already a string
-            endTime: auctionEndTime, // Keep this for display or further checks
+            highestBidder: highestBidderAddress,
+            endTime: auctionEndTime,
             isSeller: isSeller,
             isHighestBidder: isHighestBidder,
-            name: "Unknown NFT", // Default fallback name
-            symbol: "",
-            image: "",
-            auctionPda: account.publicKey.toBase58(), // The PDA for the auction account
-            // Add other relevant fields you need
+            name: "Loading...", // Initial state
+            symbol: "", // Initial state
+            image: "", // Initial state
+            auctionPda: account.publicKey.toBase58(),
           };
 
           try {
-            const [metadataPda] = PublicKey.findProgramAddressSync(
-              [
-                Buffer.from("metadata"),
-                METADATA_PROGRAM_ID.toBuffer(),
-                new PublicKey(mintAddress).toBuffer(),
-              ],
-              METADATA_PROGRAM_ID
-            );
-            const metadataAccountInfo = await connection.getAccountInfo(
-              metadataPda
-            );
-            if (metadataAccountInfo) {
-              const metadata = Metadata.fromAccountInfo(metadataAccountInfo)[0];
-              console.log("metadata : ", metadata); // For debugging
-              nftDetails.name = metadata.data.name.replace(/\0/g, ""); // Remove null bytes
-              nftDetails.symbol = metadata.data.symbol.replace(/\0/g, "");
-              // Fetch image from URI (requires another fetch)
-              const uri = metadata.data.uri.replace(/\0/g, "");
-              if (uri) {
-                const response = await fetch(uri);
-                const json = await response.json();
-                nftDetails.image = json.image;
-              }
+            console.log("mint address : ", mintAddress);
+            const response = await helius.rpc.getAsset({id:mintAddress});
+            console.log(response);
+
+            nftDetails.name  = response.content.metadata.name.replace(/\0/g, '')
+            nftDetails.symbol = response.content.metadata.symbol.replace(/\0/g, '')
+
+            const uri = response.content.json_uri;
+            if(uri) {
+              const res = await fetch(uri);
+              const json = await res.json();
+
+              nftDetails.image = json.image;
             }
           } catch (metaError) {
-            console.warn(
-              `Could not fetch metadata for ${mintAddress}:`,
-              metaError
-            );
-            nftDetails.name = "NFT (Metadata Error)"; // Fallback if metadata fails
+            console.warn(`Could not fetch metadata or process URI for ${nftDetails.mintAddress}:`, metaError);
+            nftDetails.name = "NFT (Error)";
+            nftDetails.symbol = "ERROR";
+            nftDetails.image = "/error-image.png"; // Specific fallback for errors
           }
           relevantAuctions.push(nftDetails);
         }
       }
 
-      // Sort relevantAuctions to show most recently ended first
       relevantAuctions.sort((a, b) => b.endTime - a.endTime);
 
       setEndedAuctions(relevantAuctions);
@@ -229,7 +221,7 @@ function MyAuctions() {
     } finally {
       setLoading(false);
     }
-  }, [program, publicKey, connection]);
+}, [program, publicKey, connection]);
 
   useEffect(() => {
     if (connected && program) {
@@ -649,7 +641,7 @@ function MyAuctions() {
             exit="exit"
           >
             <motion.svg
-              className="w-32 h-32 text-white mb-6"
+              className="w-32 h-32 text-green-300 mb-6"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
