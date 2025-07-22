@@ -7,7 +7,6 @@ import {
   Transaction,
   SystemProgram,
 } from "@solana/web3.js";
-import idl from "../idl/marketplacenft.json";
 import toast from "react-hot-toast";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
@@ -19,15 +18,9 @@ import {
 import {
   PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
   Metadata,
+  fetchDigitalAsset,
 } from "@metaplex-foundation/mpl-token-metadata";
-import { Helius } from "helius-sdk";
-
-
-const HELIUS_API_KEY = "e1ed6bae-c868-4b1b-9b21-e062d5edd982";
-const HELIUS_CLUSTER = "devnet";
-
-const helius = new Helius(HELIUS_API_KEY, HELIUS_CLUSTER);
-console.log("helius"  ,helius);
+import { useSolanaProgram } from "../contexts/SolanaProgramContext";
 
 
 const METADATA_PROGRAM_ID = new PublicKey(
@@ -228,17 +221,17 @@ const NftDetailModal = ({ isOpen, onClose, nft }) => {
 };
 
 function LiveSell() {
+  const { program , provider , umi , connection , connected , publicKey} = useSolanaProgram();
+  
   const [listedNfts, setListedNfts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [successfulTxNftName, setSuccessfulTxNftName] = useState("");
   const [isDelistAnimation, setIsDelistAnimation] = useState(false);
-
-  const { connection } = useConnection();
-  const { publicKey, wallet, connected } = useWallet();
+  const { wallet } = useWallet();
 
 
-    const [selectedNft, setSelectedNft] = useState(null);
+  const [selectedNft, setSelectedNft] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -286,15 +279,6 @@ function LiveSell() {
     toast.loading("Delisting NFT...", { id: "delist-nft" });
 
     try {
-      const provider = new anchor.AnchorProvider(
-        connection,
-        wallet.adapter,
-        anchor.AnchorProvider.defaultOptions()
-      );
-
-      anchor.setProvider(provider);
-      const program = new anchor.Program(idl, provider);
-
       const mintPublicKey = new PublicKey(nftToDelist.mintAddress);
 
       const [listingPda] = PublicKey.findProgramAddressSync(
@@ -395,13 +379,6 @@ function LiveSell() {
       id: "buy-nft",
     });
     try {
-      const provider = new anchor.AnchorProvider(
-        connection,
-        wallet.adapter,
-        anchor.AnchorProvider.defaultOptions()
-      );
-      anchor.setProvider(provider);
-      const program = new anchor.Program(idl, provider);
 
       const mintPublicKey = new PublicKey(nft.mintAddress);
       const sellerPublicKey = new PublicKey(nft.seller);
@@ -439,12 +416,13 @@ function LiveSell() {
       );
 
       try {
-        const response = await helius.rpc.getAsset({id:mintPublicKey});
-        console.log("metadta account info : ", metadataAccountInfo.data);
+        const response = await fetchDigitalAsset(umi , mintPublicKey);
+        console.log("creators : ", response.metadata.creators);
         if (response) {
           
-          if (response.creators && metadata.data.creators.length > 0) {
-            totalBasisPoints = metadata.data.sellerFeeBasisPoints;
+          if (response.metadata.creators && response.metadata.creators > 0) {
+            totalBasisPoints = response.metadata.sellerFeeBasisPoints;
+            console.log("total basis points : ",totalBasisPoints);
 
             if (totalBasisPoints > 0) {
               const royaltyFraction = totalBasisPoints / 10000;
@@ -452,8 +430,7 @@ function LiveSell() {
                 .mul(new anchor.BN(Math.round(royaltyFraction * 10000)))
                 .div(new anchor.BN(10000));
 
-
-              metadata.data.creators.forEach((creator) => {
+              response.metadata.creators.forEach((creator) => {
                 if (creator.share > 0) {
                   const creatorRoyaltyLamports = totalRoyaltyLamports
                     .mul(new anchor.BN(creator.share))

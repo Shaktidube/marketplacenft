@@ -25,18 +25,13 @@ import {
   MPL_TOKEN_METADATA_PROGRAM_ID,
   
 } from '@metaplex-foundation/mpl-token-metadata';
-import { Helius } from "helius-sdk";
-// import { publicKey } from "@metaplex-foundation/umi";
+import { useSolanaProgram } from "../contexts/SolanaProgramContext";
+
 
 const METADATA_PROGRAM_ID = new PublicKey(
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
 );
 
-const HELIUS_API_KEY = "e1ed6bae-c868-4b1b-9b21-e062d5edd982";
-const HELIUS_CLUSTER = "devnet";
-
-const helius = new Helius(HELIUS_API_KEY, HELIUS_CLUSTER);
-console.log("helius"  ,helius);
 
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
@@ -91,33 +86,14 @@ const textVariants = {
 };
 
 function MyAuctions() {
+  const { program ,umi, connection , connected , publicKey} = useSolanaProgram();
+
   const [endedAuctions, setEndedAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { connection } = useConnection();
-  const { publicKey, wallet, connected } = useWallet();
+  const { wallet } = useWallet();
   const [showFullScreenSuccess, setShowFullScreenSuccess] = useState(false);
   const [successfulTxNftName, setSuccessfulTxNftName] = useState("");
   const [successMessageType, setSuccessMessageType] = useState(""); // "settle" or "retrieve"
-
-  const programRef = useRef(null);
-
-  const getProgram = useCallback(() => {
-    if (!connection || !wallet?.adapter) return null;
-    if (programRef.current) {
-      return programRef.current;
-    }
-    const provider = new anchor.AnchorProvider(
-      connection,
-      wallet.adapter,
-      anchor.AnchorProvider.defaultOptions()
-    );
-    anchor.setProvider(provider);
-    const programInstance = new anchor.Program(idl, provider);
-    programRef.current = programInstance;
-    return programInstance;
-  }, [connection, wallet]);
-
-  const program = getProgram();
 
   // Function to fetch all auction accounts associated with the program
   // and filter them for the connected user.
@@ -189,13 +165,14 @@ function MyAuctions() {
 
           try {
             console.log("mint address : ", mintAddress);
-            const response = await helius.rpc.getAsset({id:mintAddress});
+            const response = await fetchDigitalAsset(umi, mintAddress);
             console.log(response);
 
-            nftDetails.name  = response.content.metadata.name.replace(/\0/g, '')
-            nftDetails.symbol = response.content.metadata.symbol.replace(/\0/g, '')
+           
+            nftDetails.name  = response.metadata.name.replace(/\0/g, '')
+            nftDetails.symbol = response.metadata.symbol.replace(/\0/g, '')
 
-            const uri = response.content.json_uri;
+            const uri = response.metadata.uri;
             if(uri) {
               const res = await fetch(uri);
               const json = await res.json();
@@ -408,6 +385,8 @@ function MyAuctions() {
               "Settle failed: You are not authorized to settle this auction (not seller or highest bidder).";
           }
         }
+      } else {
+        toast.error("request rejected");
       }
       toast.error(errorMessage, { id: "settle-auction", duration: 6000 });
     } finally {
@@ -593,6 +572,8 @@ function MyAuctions() {
               "Retrieve failed: Auction or associated accounts not found on-chain.";
           }
         }
+      }  else {
+        toast.error("request rejected");
       }
       toast.error(errorMessage, { id: "retrieve-nft", duration: 6000 });
     } finally {

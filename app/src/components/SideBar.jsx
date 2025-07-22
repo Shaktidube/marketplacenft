@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
-const Sidebar = () => {
+// Accept props for wallet handling
+const Sidebar = ({ handleWalletAction, getButtonText, isHovered, setIsHovered }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State to manage sidebar visibility
 
   const linkClasses = ({ isActive }) =>
@@ -28,6 +29,7 @@ const Sidebar = () => {
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
         className="md:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-gray-800 text-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-transform duration-300"
         aria-label="Toggle navigation"
+        aria-expanded={isSidebarOpen} // Added for accessibility
       >
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
@@ -36,14 +38,29 @@ const Sidebar = () => {
 
       {/* Sidebar Content */}
       <div
-        className={`fixed inset-y-0 left-0 w-72 bg-gray-900 border-r-2 border-gray-800 text-white flex flex-col p-6 shadow-2xl h-full transition-transform duration-300 ease-in-out z-50
+        className={`fixed inset-y-0 left-0 w-78 bg-gray-900 border-r-2 border-gray-800 text-white flex flex-col p-6 shadow-2xl h-full transition-transform duration-300 ease-in-out z-50
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           md:relative md:translate-x-0 md:flex`} // On medium screens and up, it's relative and always visible
       >
         {/* Dynamic Header with subtle animation */}
-        <h2 className='text-4xl font-extrabold mb-12 text-center text-blue-400 tracking-wide animate-pulse-light'>
+        <h2 className='text-4xl font-extrabold mb-8 text-center text-blue-400 tracking-wide animate-pulse-light'>
           Marketplace
         </h2>
+
+        {/* Connect Button - visible only on mobile when sidebar is open */}
+        {isSidebarOpen && (
+          <button
+            onClick={() => {
+              handleWalletAction(); // Use the prop function
+              setIsSidebarOpen(false); // Close sidebar after clicking
+            }}
+            onMouseEnter={() => setIsHovered(true)} // Use the prop function
+            onMouseLeave={() => setIsHovered(false)} // Use the prop function
+            className="md:hidden mb-8 py-3 px-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 text-white font-bold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 ease-in-out focus:outline-none focus:ring-4 focus:ring-green-300 active:scale-95"
+          >
+            {getButtonText()} {/* Use the prop function */}
+          </button>
+        )}
 
         <nav className='flex-grow'>
           <ul>
@@ -75,7 +92,6 @@ const Sidebar = () => {
                 <span className="absolute bottom-0 left-0 w-0 h-0.75 bg-indigo-400 transition-all duration-300 group-hover:w-full group-hover:scale-x-100 origin-left"></span>
               </NavLink>
             </li>
-            {/* NEW LINK FOR MY AUCTIONS / SETTLEMENT */}
             <li className='mb-5 group'>
               <NavLink to="/marketplace/my-auctions" className={linkClasses} onClick={() => setIsSidebarOpen(false)}>
                 <svg className="w-7 h-7 mr-4 text-indigo-300 group-hover:text-blue-100 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>

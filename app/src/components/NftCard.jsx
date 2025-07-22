@@ -1,5 +1,5 @@
 // NftCard.js
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 
 const cardVariants = {
@@ -16,25 +16,47 @@ const cardVariants = {
   },
 };
 
-function NftCard({ nft, onSellClick, onAuctionClick }) {
+function NftCard({ nft, onSellClick, onAuctionClick, onCardClick }) { // onCardClick is for "View Details"
+  const [showActions, setShowActions] = useState(false); // State to control action overlay visibility
+
+  const handleImageClick = (e) => {
+    e.stopPropagation(); // Prevent this click from bubbling up to any parent handlers
+    setShowActions(!showActions); // Toggle the visibility of the actions overlay
+  };
+
+  const handleActionClick = (actionFunction, e) => {
+    e.stopPropagation(); // Prevent action button clicks from toggling the overlay
+    actionFunction(nft);
+    setShowActions(false); // Hide actions after an action is taken
+  };
+
+  const handleViewDetailsClick = (e) => {
+    e.stopPropagation(); // Prevent this click from toggling the action overlay
+    if (onCardClick) {
+      onCardClick(nft);
+    }
+    setShowActions(false); // Hide actions after opening details
+  };
+
   return (
     <motion.div
       variants={cardVariants}
       whileHover={{
-        scale: 1.05, // Slightly more pronounced scale on hover
-        boxShadow: "0 15px 25px rgba(0,0,0,0.5), 0 5px 10px rgba(0,0,0,0.3)", // Stronger, more diffused shadow
-        zIndex: 10 // Bring to front on hover
+        scale: 1.05,
+        boxShadow: "0 15px 25px rgba(0,0,0,0.5), 0 5px 10px rgba(0,0,0,0.3)",
+        zIndex: 10
       }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-
-      className="nft-card relative bg-gradient-to-br from-gray-800 to-      // Card background and overall stylinggray-900 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 group"
+      className="nft-card relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 group"
     >
-      <div className="relative pt-[100%]"> {/* Placeholder for 1:1 aspect ratio */}
+      <div
+        className="relative pt-[100%] cursor-pointer" // This div is the clickable area for toggling actions
+        onClick={handleImageClick}
+      >
         {nft.image ? (
           <img
             src={nft.image}
             alt={nft.name || 'NFT Image'}
-            // Apply blur on group hover, smooth transition
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-110 group-hover:filter group-hover:blur-sm"
             loading="lazy"
           />
@@ -58,15 +80,21 @@ function NftCard({ nft, onSellClick, onAuctionClick }) {
           </div>
         )}
         
-        {/* Actions overlay - This is where the buttons will live */}
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 p-4">
+        {/* Actions overlay */}
+        <div
+          // Controlled by showActions state for mobile, group-hover for desktop
+          className={`absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center transition-opacity duration-300 p-4
+            ${showActions ? 'opacity-100 visible' : 'opacity-0 invisible'} // Use 'visible'/'invisible' for accessibility
+            lg:group-hover:opacity-100 lg:group-hover:visible // Desktop hover
+          `}
+        >
           <p className="text-white text-center mb-4 text-md font-bold drop-shadow-lg">What would you like to do?</p>
-          <div className="flex flex-col space-y-4 w-full px-4"> {/* Increased spacing and added padding */}
+          <div className="flex flex-col space-y-4 w-full px-4">
             {onSellClick && (
               <motion.button
-                whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(139, 92, 246, 0.6)" }} // Glow effect
+                whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(139, 92, 246, 0.6)" }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => onSellClick(nft)}
+                onClick={(e) => handleActionClick(onSellClick, e)}
                 className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-700 text-white font-semibold rounded-lg shadow-lg hover:from-blue-700 hover:to-purple-800 transition-all duration-300 text-base"
               >
                 Put on Sell
@@ -74,12 +102,22 @@ function NftCard({ nft, onSellClick, onAuctionClick }) {
             )}
             {onAuctionClick && (
               <motion.button
-                whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(6, 182, 212, 0.6)" }} // Glow effect
+                whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(6, 182, 212, 0.6)" }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => onAuctionClick(nft)}
+                onClick={(e) => handleActionClick(onAuctionClick, e)}
                 className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white font-semibold rounded-lg shadow-lg hover:from-green-600 hover:to-teal-700 transition-all duration-300 text-base"
               >
                 Start Auction
+              </motion.button>
+            )}
+            {onCardClick && ( // "View Details" button, triggered by onCardClick
+              <motion.button
+                whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(255, 255, 255, 0.3)" }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleViewDetailsClick}
+                className="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 text-base mt-2"
+              >
+                View Details
               </motion.button>
             )}
           </div>
@@ -87,7 +125,7 @@ function NftCard({ nft, onSellClick, onAuctionClick }) {
       </div>
       
       {/* NFT Info Section */}
-      <div className="p-4 bg-gradient-to-br from-gray-900 to-black rounded-b-xl border-t border-gray-700"> {/* Darker gradient for info */}
+      <div className="p-4 bg-transparent bg-opacity-60 bg- rounded-b-xl border-t border-gray-700">
         <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-cyan-300 mb-2 truncate">
           {nft.name || `NFT #${nft.mintAddress.substring(0, 6)}...`}
         </h3>

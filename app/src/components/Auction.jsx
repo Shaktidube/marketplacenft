@@ -9,7 +9,6 @@ import {
   SYSVAR_CLOCK_PUBKEY,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
-import idl from "../idl/marketplacenft.json";
 import toast from "react-hot-toast";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
@@ -19,6 +18,7 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { NavLink } from "react-router-dom";
+import { useSolanaProgram } from "../contexts/SolanaProgramContext";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
@@ -73,13 +73,13 @@ const textVariants = {
 };
 
 function Auction() {
+  const { program  , connection , connected , publicKey} = useSolanaProgram();
   const [listedNftsForAuction, setListedNftsForAuction] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { connection } = useConnection();
   const [currentBids, setCurrentBids] = useState({});
   const [showFullScreenSuccess, setShowFullScreenSuccess] = useState(false);
   const [successfulBidNftName, setSuccessfulBidNftName] = useState("");
-  const { publicKey, wallet, connected } = useWallet();
+  const { wallet } = useWallet();
   
   // State for Bid Modal Management
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
@@ -94,29 +94,6 @@ function Auction() {
   const [localDisplayTime, setLocalDisplayTime] = useState(
     Math.floor(Date.now() / 1000)
   );
-
-  const programRef = useRef(null);
-
-  const getProgram = useCallback(() => {
-    if (!connection || !wallet?.adapter) return null;
-
-    if (programRef.current) {
-      return programRef.current;
-    }
-
-    const provider = new anchor.AnchorProvider(
-      connection,
-      wallet.adapter,
-      anchor.AnchorProvider.defaultOptions()
-    );
-    anchor.setProvider(provider);
-    const programInstance = new anchor.Program(idl, provider);
-    programRef.current = programInstance;
-    console.log("Program initialized:", programInstance);
-    return programInstance;
-  }, [connection, wallet]);
-
-  const program = getProgram();
 
   // Effect to fetch initial on-chain time and update it periodically
   useEffect(() => {
@@ -139,7 +116,7 @@ function Auction() {
     fetchOnChainTime(); // Fetch immediately on mount
 
     // Set up interval to fetch every 10 seconds for dynamic updates
-    const intervalId = setInterval(fetchOnChainTime, 10000); 
+    const intervalId = setInterval(fetchOnChainTime, 1000); 
 
     return () => clearInterval(intervalId); // Cleanup interval on component unmount
   }, [connection]);

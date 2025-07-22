@@ -1,3 +1,4 @@
+// src/components/Marketplace.jsx
 import React, { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -6,20 +7,22 @@ import { useNavigate, Outlet, Routes, Route } from 'react-router-dom';
 import Mint from './Mint';
 import BuySell from './BuySell';
 import Auction from './Auction';
-import Sidebar from './SideBar';
+import Sidebar from './SideBar'; // Corrected import case to match filename
 import LiveSell from './LiveSell';
 import MyAuctions from './MyAuctions';
+import { SolanaProgramProvider } from '../contexts/SolanaProgramContext';
 
 const Marketplace = () => {
   const { publicKey, connected, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const navigate = useNavigate();
 
-  const [isHovered, setIsHovered] = useState(false); 
+  const [isHovered, setIsHovered] = useState(false);
+
   useEffect(() => {
     if (!connected && publicKey === null) {
-      // toast.error("Redirecting to home.");
-      navigate('/'); 
+      // toast.error("Redirecting to home."); // Uncomment if you want this toast
+      navigate('/');
     }
   }, [connected, publicKey, navigate]);
 
@@ -57,13 +60,17 @@ const Marketplace = () => {
 
   return (
     <div className='flex h-screen bg-gray-950 text-white'>
-    
-      <Sidebar />
+      {/* Pass wallet props to Sidebar */}
+      <Sidebar
+        handleWalletAction={handleWalletAction}
+        getButtonText={getButtonText}
+        isHovered={isHovered}
+        setIsHovered={setIsHovered}
+      />
 
-     
       <div className='flex-1 flex flex-col relative'>
-       
-        <div className='absolute top-4 right-4 z-10'>
+        {/* The connect button is now removed from here, it will be rendered in Sidebar */}
+        <div className='absolute top-4 right-4 z-10 hidden md:block'> {/* Visible on md and up, hidden below md */}
           <button
             onClick={handleWalletAction}
             onMouseEnter={() => setIsHovered(true)}
@@ -75,17 +82,17 @@ const Marketplace = () => {
         </div>
 
         <main className='flex-1 p-8 overflow-y-auto custom-scrollbar-hidden'>
-          <Routes>
-            
-            <Route index element={<Mint />} /> 
-            <Route path="mint" element={<Mint />} />
-            <Route path="buy-sell" element={<BuySell />} />
-            <Route path="auction" element={<Auction />} />
-            <Route path="live-sell" element={<LiveSell />} />
-            <Route path="my-auctions" element={<MyAuctions />} />
-            
-          </Routes>
-          <Outlet /> 
+          <SolanaProgramProvider>
+            <Routes>
+              <Route index element={<Mint />} />
+              <Route path="mint" element={<Mint />} />
+              <Route path="buy-sell" element={<BuySell />} />
+              <Route path="auction" element={<Auction />} />
+              <Route path="live-sell" element={<LiveSell />} />
+              <Route path="my-auctions" element={<MyAuctions />} />
+            </Routes>
+          </SolanaProgramProvider>
+          <Outlet />
         </main>
       </div>
       <style jsx>{`

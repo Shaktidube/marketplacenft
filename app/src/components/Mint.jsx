@@ -8,29 +8,24 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY, // Ensure this is imported for metadata creation
 } from "@solana/web3.js";
-import * as anchor from "@coral-xyz/anchor";
-import idl from "../idl/marketplacenft.json";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PinataSDK } from "pinata";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { useNavigate } from "react-router-dom";
-import confetti from 'canvas-confetti';
-
-// You may need to uncomment and enable Buffer polyfill if you encounter issues
-// with Pinata SDK or other libraries in a browser environment that expects Node.js Buffer.
-// import { Buffer } from 'buffer';
-// window.Buffer = window.Buffer || Buffer;
+import confetti from "canvas-confetti";
+import { useSolanaProgram } from "../contexts/SolanaProgramContext";
 
 
+const PINATA_JWT = import.meta.env.PINATA_JWT;
+console.log(PINATA_JWT);
 const pinata = new PinataSDK({
-  pinataJwt:
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJjYjFkY2YxNi0xZThkLTQzMWUtODY0OS02ZWI1ZGU5NmY3MzgiLCJlbWFpbCI6InNoYWt0aWR1YmUwNEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiOTkyYWQwZTM2MDU4NmJkZjBkZmUiLCJzY29wZWRLZXlTZWNyZXQiOiJlNzQ2YmQ5Mzg5NDlhYTRmZjU4OTJmN2Q3YzYxYzQzMGI2NzU2NWZlMGQwZmZiNjNiYmI4NDI2MDI2N2IxNzVjIiwiZXhwIjoxNzg0MTgwMzQyfQ.aFN39MrmLUxM-mAC6CDN5pc-6A952qK8MvQGXOvWu5k",
+  pinataJwt:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJjYjFkY2YxNi0xZThkLTQzMWUtODY0OS02ZWI1ZGU5NmY3MzgiLCJlbWFpbCI6InNoYWt0aWR1YmUwNEBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiOTkyYWQwZTM2MDU4NmJkZjBkZmUiLCJzY29wZWRLZXlTZWNyZXQiOiJlNzQ2YmQ5Mzg5NDlhYTRmZjU4OTJmN2Q3YzYxYzQzMGI2NzU2NWZlMGQwZmZiNjNiYmI4NDI2MDI2N2IxNzVjIiwiZXhwIjoxNzg0MTgwMzQyfQ.aFN39MrmLUxM-mAC6CDN5pc-6A952qK8MvQGXOvWu5k"
 });
-
-
 const MintNftPage = () => {
-  const { connection } = useConnection();
-  const { publicKey, wallet, connected } = useWallet();
+  const { program, provider, connection, connected, publicKey } =
+    useSolanaProgram();
+  // const { connection } = useConnection();
+  const { wallet } = useWallet();
   const { setVisible } = useWalletModal();
   const navigate = useNavigate();
 
@@ -59,7 +54,6 @@ const MintNftPage = () => {
     "metaqbxxUerdq28cj1RbTFW3DvdbRrVfadqotrsmoBH"
   );
 
-
   const validateField = (fieldName, value) => {
     let error = "";
     switch (fieldName) {
@@ -79,23 +73,23 @@ const MintNftPage = () => {
       case "royalty":
         // Check for empty string first
         if (value === "") {
-            error = "Royalty is required.";
-            break;
+          error = "Royalty is required.";
+          break;
         }
         // After cleaning in onChange, parseFloat should work reliably.
         // If it's still NaN here, it means it's an invalid number (e.g., just "." or "..").
         const royaltyNum = parseFloat(value);
         if (isNaN(royaltyNum)) {
-            error = "Royalty must be a valid number.";
+          error = "Royalty must be a valid number.";
         } else if (royaltyNum < 0 || royaltyNum > 99) {
-            error = "Royalty must be between 0 and 99%.";
+          error = "Royalty must be between 0 and 99%.";
         }
         break;
       case "additionalCreators":
         if (value.trim() !== "") {
-          const addresses = value.split(',').map(addr => addr.trim());
+          const addresses = value.split(",").map((addr) => addr.trim());
           for (const addr of addresses) {
-            if (addr === '') continue; // Skip empty strings resulting from extra commas
+            if (addr === "") continue; // Skip empty strings resulting from extra commas
             try {
               new PublicKey(addr); // Attempt to create PublicKey to validate
             } catch (e) {
@@ -117,7 +111,10 @@ const MintNftPage = () => {
       nftSymbol: validateField("nftSymbol", nftSymbol),
       nftPhoto: validateField("nftPhoto", nftPhoto),
       royalty: validateField("royalty", royalty),
-      additionalCreators: validateField("additionalCreators", additionalCreators), // Validate new field
+      additionalCreators: validateField(
+        "additionalCreators",
+        additionalCreators
+      ), // Validate new field
     };
     setErrors(newErrors);
     return Object.values(newErrors).every((error) => !error);
@@ -129,7 +126,7 @@ const MintNftPage = () => {
         particleCount: 150,
         spread: 180,
         origin: { y: 0.6 },
-        colors: ['#a864fd', '#29cdff', '#78ff44', '#ff718d', '#fdff6a'],
+        colors: ["#a864fd", "#29cdff", "#78ff44", "#ff718d", "#fdff6a"],
       });
 
       const timer = setTimeout(() => {
@@ -139,7 +136,6 @@ const MintNftPage = () => {
       return () => clearTimeout(timer);
     }
   }, [showConfetti]);
-
 
   const handleMintNft = async (e) => {
     e.preventDefault();
@@ -162,14 +158,6 @@ const MintNftPage = () => {
     const mintNftKeypair = Keypair.generate();
     console.log("Generated Mint Keypair:", mintNftKeypair.publicKey.toBase58());
 
-    const provider = new anchor.AnchorProvider(
-      connection,
-      wallet.adapter,
-      anchor.AnchorProvider.defaultOptions()
-    );
-    anchor.setProvider(provider);
-    const program = new anchor.Program(idl, provider); // Using the loaded IDL and provider
-
     try {
       // 1. Upload Image to Pinata
       toast.loading("Uploading NFT image...", { id: mintToastId });
@@ -189,22 +177,23 @@ const MintNftPage = () => {
 
       // Add the mint owner (current publicKey) as the first creator
       // and mark it as unique
-      if (publicKey) { // Ensure publicKey exists
-          creatorsArray.push({
-              address: publicKey,
-              verified: true, // This creator is verified by the mint transaction
-              share: 0,       // Share will be distributed across all creators
-          });
-          uniqueCreatorAddresses.add(publicKey.toBase58());
+      if (publicKey) {
+        // Ensure publicKey exists
+        creatorsArray.push({
+          address: publicKey,
+          verified: true, // This creator is verified by the mint transaction
+          share: 0, // Share will be distributed across all creators
+        });
+        uniqueCreatorAddresses.add(publicKey.toBase58());
       }
 
       // Add additional creators from input, ensuring no duplicates
       const parsedAdditionalCreators = additionalCreators
-        .split(',')
-        .map(addr => addr.trim())
-        .filter(addr => addr !== ''); // Filter out empty strings from multiple commas
+        .split(",")
+        .map((addr) => addr.trim())
+        .filter((addr) => addr !== ""); // Filter out empty strings from multiple commas
 
-      parsedAdditionalCreators.forEach(addr => {
+      parsedAdditionalCreators.forEach((addr) => {
         try {
           const creatorPubKey = new PublicKey(addr);
           const creatorPubKeyStr = creatorPubKey.toBase58();
@@ -218,7 +207,10 @@ const MintNftPage = () => {
             });
             uniqueCreatorAddresses.add(creatorPubKeyStr);
           } else {
-            console.warn("Skipping duplicate additional creator address:", addr);
+            console.warn(
+              "Skipping duplicate additional creator address:",
+              addr
+            );
             toast.warn(`Duplicate creator address ignored: ${addr}`);
           }
         } catch (e) {
@@ -239,18 +231,21 @@ const MintNftPage = () => {
         }
         // Assign any remainder to the first creator (the minter's address)
         if (totalCreators > 0) {
-            creatorsArray[0].share += remainingShare;
+          creatorsArray[0].share += remainingShare;
         }
       }
 
-      console.log("Final Creators Array for On-Chain:", creatorsArray.map(c => ({
-        address: c.address.toBase58(),
-        verified: c.verified,
-        share: c.share
-      })));
+      console.log(
+        "Final Creators Array for On-Chain:",
+        creatorsArray.map((c) => ({
+          address: c.address.toBase58(),
+          verified: c.verified,
+          share: c.share,
+        }))
+      );
 
       // Prepare creators for metadata JSON (verified status typically not in JSON)
-      const metadataCreators = creatorsArray.map(c => ({
+      const metadataCreators = creatorsArray.map((c) => ({
         address: c.address.toBase58(),
         share: c.share,
       }));
@@ -260,10 +255,12 @@ const MintNftPage = () => {
         symbol: nftSymbol,
         image: imageUri,
         properties: {
-          files: [{
-            uri: imageUri,
-            type: nftPhoto.type
-          }],
+          files: [
+            {
+              uri: imageUri,
+              type: nftPhoto.type,
+            },
+          ],
           category: "image",
           creators: metadataCreators, // Add creators to metadata
         },
@@ -328,13 +325,17 @@ const MintNftPage = () => {
       const transaction = new Transaction();
       transaction.add(mintToInstruction);
 
-      transaction.recentBlockhash = (await provider.connection.getLatestBlockhash()).blockhash;
+      transaction.recentBlockhash = (
+        await provider.connection.getLatestBlockhash()
+      ).blockhash;
       transaction.feePayer = publicKey;
 
       const signedTx = await wallet.adapter.signTransaction(transaction);
       signedTx.partialSign(mintNftKeypair); // Sign with the generated mint keypair
 
-      const txSig = await provider.connection.sendRawTransaction(signedTx.serialize());
+      const txSig = await provider.connection.sendRawTransaction(
+        signedTx.serialize()
+      );
       await provider.connection.confirmTransaction(txSig, "confirmed");
 
       const explorerUrl = `https://explorer.solana.com/tx/${txSig}?cluster=devnet`; // Change cluster if needed
@@ -342,7 +343,12 @@ const MintNftPage = () => {
         () => (
           <div>
             NFT Minted Successfully!{" "}
-            <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-300">
+            <a
+              href={explorerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline text-blue-300"
+            >
               View on Explorer
             </a>
           </div>
@@ -365,20 +371,30 @@ const MintNftPage = () => {
       setErrors({});
 
       setTimeout(() => {
-        navigate('/marketplace/buy-sell');
+        navigate("/marketplace/buy-sell");
       }, 1500);
-
     } catch (error) {
       toast.dismiss(mintToastId);
-      let errorMessage = `Error minting NFT: ${error.message || error.toString()}`;
+      let errorMessage = `Error minting NFT: ${
+        error.message || error.toString()
+      }`;
       if (error.logs) {
         console.error("Transaction logs:", error.logs); // Log all logs for deeper debugging
-        const programErrorLog = error.logs.find(log => log.includes("Program log: AnchorError"));
+        const programErrorLog = error.logs.find((log) =>
+          log.includes("Program log: AnchorError")
+        );
         if (programErrorLog) {
-          errorMessage = programErrorLog.split("Error Message: ")[1] || errorMessage;
-        } else if (error.message.includes("failed to send transaction: Transaction simulation failed")) {
-            // General simulation failure, could be missing required signers, insufficient lamports etc.
-            errorMessage = `Transaction simulation failed. Check wallet balance, required accounts, or RPC. Logs: ${error.logs.join('\n')}`;
+          errorMessage =
+            programErrorLog.split("Error Message: ")[1] || errorMessage;
+        } else if (
+          error.message.includes(
+            "failed to send transaction: Transaction simulation failed"
+          )
+        ) {
+          // General simulation failure, could be missing required signers, insufficient lamports etc.
+          errorMessage = `Transaction simulation failed. Check wallet balance, required accounts, or RPC. Logs: ${error.logs.join(
+            "\n"
+          )}`;
         }
       }
       toast.error(errorMessage, { duration: 6000 });
@@ -406,10 +422,13 @@ const MintNftPage = () => {
       const file = files[0];
       if (file.type.startsWith("image/")) {
         setNftPhoto(file);
-        setErrors(prev => ({ ...prev, nftPhoto: '' }));
+        setErrors((prev) => ({ ...prev, nftPhoto: "" }));
       } else {
         toast.error("Only image files are supported.");
-        setErrors(prev => ({ ...prev, nftPhoto: 'Only image files are supported.' }));
+        setErrors((prev) => ({
+          ...prev,
+          nftPhoto: "Only image files are supported.",
+        }));
       }
     }
   };
@@ -420,11 +439,14 @@ const MintNftPage = () => {
       const file = files[0];
       if (file.type.startsWith("image/")) {
         setNftPhoto(file);
-        setErrors(prev => ({ ...prev, nftPhoto: '' }));
+        setErrors((prev) => ({ ...prev, nftPhoto: "" }));
       } else {
         toast.error("Only image files are supported.");
         e.target.value = "";
-        setErrors(prev => ({ ...prev, nftPhoto: 'Only image files are supported.' }));
+        setErrors((prev) => ({
+          ...prev,
+          nftPhoto: "Only image files are supported.",
+        }));
       }
     }
   };
@@ -434,45 +456,42 @@ const MintNftPage = () => {
   };
 
   const handleRoyaltyChange = (e) => {
-  const rawValue = e.target.value.trim();
-  let cleanedValue = rawValue;
-  let validationError = '';
+    const rawValue = e.target.value.trim();
+    let cleanedValue = rawValue;
+    let validationError = "";
 
-  if (/^[eE]/.test(rawValue)) {
-    validationError = "Royalty cannot start with 'e' or 'E'";
-    toast.error(validationError, { duration: 3000 });
-    cleanedValue = '';
-  }
+    if (/^[eE]/.test(rawValue)) {
+      validationError = "Royalty cannot start with 'e' or 'E'";
+      toast.error(validationError, { duration: 3000 });
+      cleanedValue = "";
+    } else if (/[eE]/.test(rawValue)) {
+      validationError = "Exponential notation (e.g. 1e5) is not allowed";
+      toast.error(validationError, { duration: 3000 });
+      cleanedValue = "";
+    } else if (!/^\d*\.?\d{0,4}$/.test(rawValue) && rawValue !== "") {
+      validationError =
+        "Only numbers and at most one decimal point are allowed";
+      toast.error(validationError, { duration: 3000 });
+      cleanedValue = rawValue.replace(/[^0-9.]/g, "");
 
-  else if (/[eE]/.test(rawValue)) {
-    validationError = "Exponential notation (e.g. 1e5) is not allowed";
-    toast.error(validationError, { duration: 3000 });
-    cleanedValue = '';
-  }
-
-  else if (!/^\d*\.?\d{0,4}$/.test(rawValue) && rawValue !== '') {
-    validationError = "Only numbers and at most one decimal point are allowed";
-    toast.error(validationError, { duration: 3000 });
-    cleanedValue = rawValue.replace(/[^0-9.]/g, '');
-
-    const parts = cleanedValue.split('.');
-    if (parts.length > 2) {
-      cleanedValue = parts[0] + '.' + parts.slice(1).join('');
+      const parts = cleanedValue.split(".");
+      if (parts.length > 2) {
+        cleanedValue = parts[0] + "." + parts.slice(1).join("");
+      }
     }
-  }
 
-  setRoyalty(cleanedValue);
+    setRoyalty(cleanedValue);
 
-  // ❗️ Only set required if completely empty
-  if (cleanedValue === '') {
-    setErrors(prev => ({ ...prev, royalty: validationError || 'Royalty is required' }));
-  } else {
-    setErrors(prev => ({ ...prev, royalty: validationError }));
-  }
-};
-
-
-
+    // ❗️ Only set required if completely empty
+    if (cleanedValue === "") {
+      setErrors((prev) => ({
+        ...prev,
+        royalty: validationError || "Royalty is required",
+      }));
+    } else {
+      setErrors((prev) => ({ ...prev, royalty: validationError }));
+    }
+  };
 
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-y-auto custom-scrollbar-hidden">
@@ -523,7 +542,9 @@ const MintNftPage = () => {
                 <p className="text-lg font-medium text-blue-300">
                   File Selected:
                 </p>
-                <p className="text-md text-center px-4 truncate">{nftPhoto.name}</p>
+                <p className="text-md text-center px-4 truncate">
+                  {nftPhoto.name}
+                </p>
                 <p className="text-sm mt-2 text-gray-400">
                   (Click or Drag another file to change)
                 </p>
@@ -544,7 +565,7 @@ const MintNftPage = () => {
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   ></path>
                 </svg>
-                <p className="text-xl font-semibold">
+                <p className="text-lg md:text-xl ml-6 font-semibold">
                   Drag & Drop your NFT image here
                 </p>
                 <p className="text-md mt-1">or click to browse</p>
@@ -563,7 +584,10 @@ const MintNftPage = () => {
 
         {/* NFT Name */}
         <div>
-          <label htmlFor="nftName" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="nftName"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             NFT Name <span className="text-red-400">*</span>
           </label>
           <input
@@ -585,7 +609,10 @@ const MintNftPage = () => {
 
         {/* NFT Symbol */}
         <div>
-          <label htmlFor="nftSymbol" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="nftSymbol"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             NFT Symbol <span className="text-red-400">*</span>
           </label>
           <input
@@ -607,7 +634,10 @@ const MintNftPage = () => {
 
         {/* Royalty - UPDATED onChange HERE */}
         <div>
-          <label htmlFor="royalty" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="royalty"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             Royalty (%) <span className="text-red-400">*</span>
           </label>
           <input
@@ -627,7 +657,10 @@ const MintNftPage = () => {
 
         {/* NEW: Additional Creators Input (re-enabled) */}
         <div>
-          <label htmlFor="additionalCreators" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="additionalCreators"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             Additional Creators
           </label>
           <input
@@ -639,17 +672,24 @@ const MintNftPage = () => {
               setErrors((prev) => ({ ...prev, additionalCreators: "" })); // Clear error on change
             }}
             className={`shadow-inner appearance-none border rounded-lg w-full py-3 px-4 text-gray-100 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-900/50 transition duration-200 ease-in-out transform focus:scale-[1.01] placeholder-gray-500
-              ${errors.additionalCreators ? "border-red-500" : "border-gray-700"}`}
+              ${
+                errors.additionalCreators ? "border-red-500" : "border-gray-700"
+              }`}
             placeholder="e.g., Addr1, Addr2"
           />
           {errors.additionalCreators && (
-            <p className="text-red-400 mt-1 ml-1 text-sm">{errors.additionalCreators}</p>
+            <p className="text-red-400 mt-1 ml-1 text-sm">
+              {errors.additionalCreators}
+            </p>
           )}
         </div>
 
         {/* Collection Mint Address (Still Disabled) */}
         <div>
-          <label htmlFor="collectionMint" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="collectionMint"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             Collection Mint Address
           </label>
           <input
@@ -671,14 +711,20 @@ const MintNftPage = () => {
             className="form-checkbox h-5 w-5 text-blue-600 bg-gray-900 border-gray-600 rounded focus:ring-blue-500 cursor-not-allowed opacity-60"
             disabled
           />
-          <label htmlFor="collectionVerified" className="ml-2 text-gray-400 text-base font-semibold cursor-not-allowed opacity-60">
+          <label
+            htmlFor="collectionVerified"
+            className="ml-2 text-gray-400 text-base font-semibold cursor-not-allowed opacity-60"
+          >
             Collection Verified
           </label>
         </div>
 
         {/* Max Supply (Still Disabled) */}
         <div>
-          <label htmlFor="maxSupply" className="block text-gray-200 text-base font-semibold mb-2">
+          <label
+            htmlFor="maxSupply"
+            className="block text-gray-200 text-base font-semibold mb-2"
+          >
             Max Supply
           </label>
           <input
@@ -699,7 +745,7 @@ const MintNftPage = () => {
             disabled:from-gray-600 disabled:to-gray-500 disabled:shadow-none disabled:cursor-not-allowed disabled:hover:scale-100 disabled:animate-none"
             disabled={isMinting}
           >
-            {isMinting ? 'Minting NFT...' : 'Mint NFT'}
+            {isMinting ? "Minting NFT..." : "Mint NFT"}
           </button>
         </div>
       </form>
@@ -714,20 +760,42 @@ const MintNftPage = () => {
           display: none; /* Chrome, Safari, Opera */
         }
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
         @keyframes slideInDown {
-          from { transform: translateY(-20px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
+          from {
+            transform: translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
         }
         @keyframes fadeInUp {
-          from { transform: translateY(20px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
+          from {
+            transform: translateY(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
         }
         @keyframes scaleIn {
-          from { transform: scale(0.98); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
+          from {
+            transform: scale(0.98);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1);
+            opacity: 1;
+          }
         }
         @keyframes pulseEffect {
           0% {
@@ -744,11 +812,24 @@ const MintNftPage = () => {
           }
         }
 
-        .animate-fadeIn { animation: fadeIn 0.8s ease-out forwards; }
-        .animate-slideInDown { animation: slideInDown 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-        .animate-fadeInUp { animation: fadeInUp 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; animation-delay: 0.2s; }
-        .animate-scaleIn { animation: scaleIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; animation-delay: 0.3s; }
-        .animate-pulse-on-hover:not([disabled]):hover { animation: pulseEffect 1.5s infinite; }
+        .animate-fadeIn {
+          animation: fadeIn 0.8s ease-out forwards;
+        }
+        .animate-slideInDown {
+          animation: slideInDown 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)
+            forwards;
+        }
+        .animate-fadeInUp {
+          animation: fadeInUp 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+          animation-delay: 0.2s;
+        }
+        .animate-scaleIn {
+          animation: scaleIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+          animation-delay: 0.3s;
+        }
+        .animate-pulse-on-hover:not([disabled]):hover {
+          animation: pulseEffect 1.5s infinite;
+        }
       `}</style>
     </div>
   );
