@@ -35,6 +35,7 @@ const MintNftPage = () => {
   const [nftSymbol, setNftSymbol] = useState("");
   const [nftPhoto, setNftPhoto] = useState(null);
   const [royalty, setRoyalty] = useState("");
+  
   // Re-enabled state for creators input
   const [additionalCreators, setAdditionalCreators] = useState(""); // Comma-separated addresses
   const [collectionMint, setCollectionMint] = useState(""); // Keeping this as disabled

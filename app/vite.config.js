@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { NodeGlobalsPolyfillPlugin } from "@esbuild-plugins/node-globals-polyfill";
 import { NodeModulesPolyfillPlugin } from "@esbuild-plugins/node-modules-polyfill";
+import rollupNodePolyFill from 'rollup-plugin-node-polyfills';
 
 export default defineConfig({
   plugins: [
@@ -21,7 +22,7 @@ export default defineConfig({
       },
       plugins: [
         NodeGlobalsPolyfillPlugin({
-          buffer: false,
+          buffer: true,
           process: true,
         }),
       ],
@@ -33,6 +34,11 @@ export default defineConfig({
       stream: "stream-browserify",
       process: "process",
       util: "util",
+    },
+  },
+    build: {
+    rollupOptions: {
+      plugins: [rollupNodePolyFill()],
     },
   },
 });

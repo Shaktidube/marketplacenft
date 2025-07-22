@@ -144,7 +144,7 @@ function BuySell() {
     try {
       // Use Umi's fetchAllDigitalAssetByOwner
       // Note: This fetches ALL NFTs, pagination is done client-side.
-      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey);
+      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey );
 
       console.log("Umi fetchAllDigitalAssetByOwner response (full list):", allDigitalAssets);
 
