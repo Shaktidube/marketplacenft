@@ -15,6 +15,10 @@ export default defineConfig({
     }),
     NodeModulesPolyfillPlugin(),
   ],
+  define: {
+    global: "globalThis",
+    "process.env" : {}
+  },
   optimizeDeps: {
     esbuildOptions: {
       define: {
