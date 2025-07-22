@@ -1,33 +1,39 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
-import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { NodeGlobalsPolyfillPlugin } from "@esbuild-plugins/node-globals-polyfill";
+import { NodeModulesPolyfillPlugin } from "@esbuild-plugins/node-modules-polyfill";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      buffer: 'buffer',       // ✅ Add buffer polyfill
-      process: 'process', // ✅ Add process polyfill
-    },
-  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    NodeGlobalsPolyfillPlugin({
+      buffer: true,
+      process: true,
+    }),
+    NodeModulesPolyfillPlugin(),
+  ],
   optimizeDeps: {
-    include: [
-      '@solana/web3.js',
-      '@metaplex-foundation/js',
-      'buffer',
-      'process',
-    ],
     esbuildOptions: {
       define: {
-        global: 'globalThis', // 👈 Very important
+        global: "globalThis",
       },
       plugins: [
         NodeGlobalsPolyfillPlugin({
-          buffer: true,
+          buffer: false,
           process: true,
         }),
       ],
     },
   },
+  resolve: {
+    alias: {
+      buffer:'buffer',
+      stream: "stream-browserify",
+      process: "process",
+      util: "util",
+    },
+  },
 });
+ 
