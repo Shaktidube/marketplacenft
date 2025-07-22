@@ -281,10 +281,10 @@ function LiveSell() {
     try {
       const mintPublicKey = new PublicKey(nftToDelist.mintAddress);
 
-      const [listingPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("listing"), mintPublicKey.toBuffer()],
-        program.programId
-      );
+      // const [listingPda] = PublicKey.findProgramAddressSync(
+      //   [Buffer.from("listing"), mintPublicKey.toBuffer()],
+      //   program.programId
+      // );
 
       const escrowAta = await getAssociatedTokenAddress(
         mintPublicKey,
@@ -304,7 +304,7 @@ function LiveSell() {
           mint: mintPublicKey,
           sellerTokenAccount: sellerTokenAccount,
           escrowAta: escrowAta,
-          listingPda: listingPda,
+          // listingPda: listingPda,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -383,19 +383,19 @@ function LiveSell() {
       const mintPublicKey = new PublicKey(nft.mintAddress);
       const sellerPublicKey = new PublicKey(nft.seller);
 
-      const [listingPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("listing"), mintPublicKey.toBuffer()],
-        program.programId
-      );
+      // const [listingPda] = PublicKey.findProgramAddressSync(
+      //   [Buffer.from("listing"), mintPublicKey.toBuffer()],
+      //   program.programId
+      // );
 
-      const listingAccount = await program.account.listing.fetch(listingPda);
-      const priceInLamports = listingAccount.price;
+      // const listingAccount = await program.account.listing.fetch(listingPda);
+      // const priceInLamports = listingAccount.price;
 
-      const escrowAta = await getAssociatedTokenAddress(
-        mintPublicKey,
-        listingPda,
-        true
-      );
+      // const escrowAta = await getAssociatedTokenAddress(
+      //   mintPublicKey,
+      //   listingPda,
+      //   true
+      // );
 
       const buyerTokenAccount = await getAssociatedTokenAddress(
         mintPublicKey,
@@ -406,14 +406,14 @@ function LiveSell() {
       let totalRoyaltyLamports = new anchor.BN(0);
       let totalBasisPoints = 0;
 
-      const [metadataPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("metadata"),
-          METADATA_PROGRAM_ID.toBuffer(),
-          mintPublicKey.toBuffer(),
-        ],
-        METADATA_PROGRAM_ID
-      );
+      // const [metadataPda] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     METADATA_PROGRAM_ID.toBuffer(),
+      //     mintPublicKey.toBuffer(),
+      //   ],
+      //   METADATA_PROGRAM_ID
+      // );
 
       try {
         const response = await fetchDigitalAsset(umi , mintPublicKey);

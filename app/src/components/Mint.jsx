@@ -277,24 +277,24 @@ const MintNftPage = () => {
       toast.loading("Minting NFT on Solana...", { id: mintToastId });
 
       // Derive Metadata and Master Edition PDAs
-      const [metadataAccount] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("metadata"),
-          METADATA_PROGRAM_ID.toBuffer(),
-          mintNftKeypair.publicKey.toBuffer(),
-        ],
-        METADATA_PROGRAM_ID
-      );
+      // const [metadataAccount] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     METADATA_PROGRAM_ID.toBuffer(),
+      //     mintNftKeypair.publicKey.toBuffer(),
+      //   ],
+      //   METADATA_PROGRAM_ID
+      // );
 
-      const [masterEditionAccount] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("metadata"),
-          METADATA_PROGRAM_ID.toBuffer(),
-          mintNftKeypair.publicKey.toBuffer(),
-          Buffer.from("edition"),
-        ],
-        METADATA_PROGRAM_ID
-      );
+      // const [masterEditionAccount] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     METADATA_PROGRAM_ID.toBuffer(),
+      //     mintNftKeypair.publicKey.toBuffer(),
+      //     Buffer.from("edition"),
+      //   ],
+      //   METADATA_PROGRAM_ID
+      // );
 
       const ata = await getAssociatedTokenAddress(
         mintNftKeypair.publicKey,
