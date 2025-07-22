@@ -6,9 +6,10 @@ import { WalletConnectionProvider } from './components/WalletProvider.jsx'
 // import { Buffer  } from 'buffer';
 import * as buffer from 'buffer'
 import process from 'process';
+
 window.process = process; 
 window.Buffer = buffer.Buffer;
-window.global = window;
+window.global = window || window.global;
 
 
 createRoot(document.getElementById('root')).render(
