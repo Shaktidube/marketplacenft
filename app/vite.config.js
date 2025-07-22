@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       buffer: 'buffer',       // ✅ Add buffer polyfill
-      process: 'process/browser', // ✅ Add process polyfill
+      process: 'process', // ✅ Add process polyfill
     },
   },
   optimizeDeps: {
