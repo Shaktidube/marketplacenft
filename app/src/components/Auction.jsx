@@ -129,20 +129,78 @@ function Auction() {
     return () => clearInterval(interval);
   }, []);
 
-
+  // --- MODIFIED useEffect FOR FETCHING FROM BLOCKCHAIN ---
   useEffect(() => {
-    const storedListedNfts = localStorage.getItem("listedNftsForAuction");
-    if (storedListedNfts) {
-      try {
-        const parsedNfts = JSON.parse(storedListedNfts);
-        setListedNftsForAuction(parsedNfts);
-      } catch (e) {
-        console.error("Failed to parse listed NFTs from localStorage", e);
-        setListedNftsForAuction([]);
+    const fetchListedAuctions = async () => {
+      if (!program) {
+        setLoading(false);
+        return;
       }
+
+      setLoading(true);
+      try {
+        // Fetch all accounts of type 'auction'
+        const auctionAccounts = await program.account.auction.all();
+        console.log("Fetched auction accounts:", auctionAccounts);
+
+        const fetchedNfts = auctionAccounts
+          .map((account) => {
+            const auctionData = account.account;
+            // Ensure the auction has not ended on-chain and has valid data
+            if (
+              auctionData.endTime.toNumber() > onChainCurrentTime ||
+              onChainCurrentTime === 0 // If onChainCurrentTime is not yet synced, consider it active
+            ) {
+              return {
+                mintAddress: auctionData.nftMint.toBase58(),
+                seller: auctionData.seller.toBase58(),
+                initialPrice: auctionData.satrtPrice.toNumber() / LAMPORTS_PER_SOL,
+                currentBid: auctionData.currentBid.toNumber() / LAMPORTS_PER_SOL,
+                highestBidder: auctionData.highestBidder.toBase58(),
+                startTime: auctionData.startTime.toNumber(),
+                endTime: auctionData.endTime.toNumber(),
+                duration: auctionData.endTime.toNumber() - auctionData.startTime.toNumber(), // Calculate duration from start and end
+                // Placeholder for name and image. You might need a separate metadata fetch or store these on-chain.
+                // For demonstration, we'll use generic data. In a real app, you'd parse metadata from the NFT mint.
+                name: `NFT #${auctionData.nftMint.toBase58().substring(0, 6)}`,
+                symbol: "AUCTION",
+                image: "https://arweave.net/FhCgsz4D2lJ59R9m4Vf-V7XvS7o4f3w_2024.jpg", // Replace with actual image fetch
+              };
+            }
+            return null;
+          })
+          .filter(Boolean); // Filter out nulls (ended auctions)
+
+        // For better UX, you might want to fetch actual NFT metadata here
+        // (e.g., using @metaplex-foundation/mpl-token-metadata or off-chain data)
+        // For simplicity in this example, we're using placeholder NFT name/image.
+
+        setListedNftsForAuction(fetchedNfts);
+        console.log("Updated listed NFTs from blockchain:", fetchedNfts);
+
+        // Update initial current bids from fetched data
+        const initialBids = {};
+        fetchedNfts.forEach(nft => {
+          initialBids[nft.mintAddress] = nft.currentBid;
+        });
+        setCurrentBids(initialBids);
+
+      } catch (error) {
+        console.error("Failed to fetch listed NFTs from blockchain:", error);
+        toast.error("Failed to load auctions from the blockchain.");
+        setListedNftsForAuction([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Fetch auctions when the program is available or on-chain time updates
+    // We also depend on `onChainCurrentTime` to correctly filter out ended auctions on load
+    if (program && onChainCurrentTime !== 0) {
+        fetchListedAuctions();
     }
-    setLoading(false);
-  }, []);
+  }, [program, onChainCurrentTime]); // Dependency array: re-run when program or onChainCurrentTime changes
+  // --- END MODIFIED useEffect ---
 
   const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -184,10 +242,11 @@ function Auction() {
                 const updated = prev.filter(
                   (item) => item.mintAddress !== nft.mintAddress
                 );
-                localStorage.setItem(
-                  "listedNftsForAuction",
-                  JSON.stringify(updated)
-                );
+                // No longer storing in localStorage, so remove this line
+                // localStorage.setItem(
+                //   "listedNftsForAuction",
+                //   JSON.stringify(updated)
+                // );
                 return updated;
               });
               setCurrentBids((prev) => {
@@ -225,7 +284,8 @@ function Auction() {
 
   useEffect(() => {
     if (!loading && listedNftsForAuction.length > 0 && program) {
-      fetchAllCurrentBids(listedNftsForAuction);
+      // No need to call fetchAllCurrentBids here if the main useEffect fetches all initial data
+      // fetchAllCurrentBids(listedNftsForAuction); // This might be redundant if the main fetch is comprehensive
 
       const subscriptions = [];
       listedNftsForAuction.forEach((nft) => {
@@ -279,10 +339,11 @@ function Auction() {
                     const updated = prev.filter(
                       (item) => item.mintAddress !== nft.mintAddress
                     );
-                    localStorage.setItem(
-                      "listedNftsForAuction",
-                      JSON.stringify(updated)
-                    );
+                    // No longer storing in localStorage, so remove this line
+                    // localStorage.setItem(
+                    //   "listedNftsForAuction",
+                    //   JSON.stringify(updated)
+                    // );
                     return updated;
                   });
                   setCurrentBids((prev) => {
@@ -321,7 +382,7 @@ function Auction() {
     listedNftsForAuction,
     program,
     connection,
-    fetchAllCurrentBids,
+    // fetchAllCurrentBids, // This dependency might not be needed if initial fetch is comprehensive
     onChainCurrentTime,
   ]);
 
@@ -391,7 +452,7 @@ function Auction() {
         const updated = prev.filter(
           (item) => item.mintAddress !== nft.mintAddress
         );
-        localStorage.setItem("listedNftsForAuction", JSON.stringify(updated));
+        // localStorage.setItem("listedNftsForAuction", JSON.stringify(updated)); // Remove localStorage
         return updated;
       });
       return;
@@ -539,10 +600,10 @@ function Auction() {
                     }
                     : item
             );
-            localStorage.setItem(
-                "listedNftsForAuction",
-                JSON.stringify(updatedNfts)
-            );
+            // localStorage.setItem( // Remove localStorage
+            //     "listedNftsForAuction",
+            //     JSON.stringify(updatedNfts)
+            // );
             return updatedNfts;
         });
 
@@ -714,10 +775,10 @@ function Auction() {
         (nft) => nft.mintAddress !== nftToRetrieve.mintAddress
       );
       setListedNftsForAuction(updatedListedNfts);
-      localStorage.setItem(
-        "listedNftsForAuction",
-        JSON.stringify(updatedListedNfts)
-      );
+      // localStorage.setItem( // Remove localStorage
+      //   "listedNftsForAuction",
+      //   JSON.stringify(updatedListedNfts)
+      // );
       setCurrentBids((prev) => {
         const newBids = { ...prev };
         delete newBids[nftToRetrieve.mintAddress];
