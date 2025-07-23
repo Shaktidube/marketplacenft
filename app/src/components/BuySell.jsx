@@ -1,8 +1,8 @@
 // BuySell.js
 import React, { useEffect, useState, useCallback } from 'react';
-import * as anchor from "@coral-xyz/anchor"; // Still needed for anchor.BN and anchor.web3.LAMPORTS_PER_SOL
+import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { useWallet } from "@solana/wallet-adapter-react"; // Keep useWallet for 'wallet' and 'connected'
+import { useWallet } from "@solana/wallet-adapter-react";
 import toast from 'react-hot-toast';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import confetti from 'canvas-confetti';
@@ -12,11 +12,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import NftCard from './NftCard';
 import SellModal from './SellModal';
 import AuctionModal from './AuctionModal';
-import NftDetailModal from './NftDetailModal'; // Ensure this is imported
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import NftDetailModal from './NftDetailModal';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token'; // ASSOCIATED_TOKEN_PROGRAM_ID not explicitly used here, can remove if not needed elsewhere
 
-import { useSolanaProgram } from '../contexts/SolanaProgramContext'; // Import the context hook
-import { fetchAllDigitalAssetByOwner } from '@metaplex-foundation/mpl-token-metadata';
+import { useSolanaProgram } from '../contexts/SolanaProgramContext';
+import { fetchAllDigitalAssetByOwner, fetchDigitalAsset } from '@metaplex-foundation/mpl-token-metadata'; // Import fetchDigitalAsset
 import { toWeb3JsPublicKey } from '@metaplex-foundation/umi-web3js-adapters';
 
 // Framer Motion Variants
@@ -55,7 +55,7 @@ const spinnerVariants = {
   },
 };
 
-// Custom hook for wallet popup detection (can remain here)
+// Custom hook for wallet popup detection
 const useWalletPopupDetection = () => {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
@@ -79,43 +79,170 @@ const useWalletPopupDetection = () => {
 };
 
 function BuySell() {
-  // Destructure from the context hook
-  const { program, provider, helius, umi,connection, connected, publicKey } = useSolanaProgram();
-  const { wallet } = useWallet(); // Still need wallet object for adapter access
+  const { program, provider, umi, connection, connected, publicKey } = useSolanaProgram();
+  const { wallet } = useWallet();
 
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { setVisible } = useWalletModal(); // For opening the wallet modal manually
+  const { setVisible } = useWalletModal();
   const navigate = useNavigate();
-  const walletPopupVisible = useWalletPopupDetection(); // Using the custom hook
+  const walletPopupVisible = useWalletPopupDetection();
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [nftsPerPage] = useState(20);
-  const [totalNfts, setTotalNfts] = useState(0);
+  const [totalNfts, setTotalNfts] = useState(0); // This will now represent total *unlisted* NFTs
 
   // States for Modals
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
-  const [selectedNft, setSelectedNft] = useState(null); // Used for Sell/Auction modals
+  const [selectedNft, setSelectedNft] = useState(null);
 
   // New states for NFT Detail Modal
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedNftForDetail, setSelectedNftForDetail] = useState(null);
+
+  // Helper function for IPFS URL transformation to avoid CORS
+  // Using Cloudflare's IPFS gateway for demonstration
+  const transformIpfsUrl = useCallback((url) => {
+      if (!url) return null;
+      if (url.startsWith('https://gateway.pinata.cloud/ipfs/')) {
+          const cidPath = url.substring('https://gateway.pinata.cloud/ipfs/'.length);
+          return `https://cloudflare-ipfs.com/ipfs/${cidPath}`;
+      }
+      if (url.startsWith('ipfs://')) {
+          const cid = url.substring('ipfs://'.length);
+          return `https://cloudflare-ipfs.com/ipfs/${cid}`;
+      }
+      return url;
+  }, []); // No dependencies for this simple transformation
+
+  // Function to fetch active sales from the program
+  const fetchActiveSales = useCallback(async () => {
+    if (!program || !umi) return [];
+    try {
+      // Assuming 'listing' is the name of your account type in the IDL for direct sales
+      const allListingAccounts = await program.account.listing.all();
+
+      const activeSalesPromises = allListingAccounts.map(async (account) => {
+        // You might need to add a check here if your program has an 'isSold' or 'isActive' field
+        // if (account.account.isSold) return null;
+
+        const mintAddress = account.account.mint.toBase58();
+        const seller = account.account.seller.toBase58();
+        const price = account.account.price.toNumber() / anchor.web3.LAMPORTS_PER_SOL;
+
+        // Fetch metadata for the listed NFT using Umi
+        const umiMint = new PublicKey(mintAddress);
+        const asset = await fetchDigitalAsset(umi, umiMint);
+
+        let imageUrl = null;
+        let description = asset.metadata.description || 'No description available.';
+
+        if (asset.metadata.uri) {
+          try {
+            const metadataUriToFetch = transformIpfsUrl(asset.metadata.uri);
+            const metadataResponse = await fetch(metadataUriToFetch);
+            if (metadataResponse.ok) {
+              const fetchedMetadata = await metadataResponse.json();
+              if (fetchedMetadata.image) {
+                imageUrl = transformIpfsUrl(fetchedMetadata.image);
+              }
+              if (fetchedMetadata.description) {
+                description = fetchedMetadata.description;
+              }
+            }
+          } catch (metadataErr) {
+            console.error(`Error fetching/parsing metadata for listed NFT ${mintAddress}:`, metadataErr);
+          }
+        } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
+            const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
+            if (imageFile) {
+                imageUrl = transformIpfsUrl(imageFile.uri);
+            }
+        }
+        return { mintAddress, name: asset.metadata.name, symbol: asset.metadata.symbol, image: imageUrl, description, seller, sellPrice: price };
+      });
+      return (await Promise.all(activeSalesPromises)).filter(Boolean);
+    } catch (err) {
+      console.error("Error fetching active sales from program:", err);
+      toast.error("Failed to load active sales from the blockchain.");
+      return [];
+    }
+  }, [program, umi, transformIpfsUrl]); // Dependencies for this useCallback
+
+  // Function to fetch active auctions from the program
+  const fetchActiveAuctions = useCallback(async () => {
+    if (!program || !umi) return [];
+    try {
+      // Assuming 'auction' is the name of your account type in the IDL for auctions
+      const allAuctionAccounts = await program.account.auction.all();
+
+      const activeAuctionsPromises = allAuctionAccounts.map(async (account) => {
+        // Filter out ended auctions based on program state (e.g., 'ended' field)
+        const currentTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
+        if (account.account.ended || account.account.endTime.toNumber() <= currentTimestamp) return null;
+
+        const mintAddress = account.account.nftMint.toBase58();
+        const seller = account.account.seller.toBase58();
+        const initialPrice = account.account.initialPrice.toNumber() / anchor.web3.LAMPORTS_PER_SOL;
+        const startTime = account.account.startTime.toNumber();
+        const endTime = account.account.endTime.toNumber();
+        const highestBid = account.account.highestBid ? account.account.highestBid.toNumber() / anchor.web3.LAMPORTS_PER_SOL : null;
+        const highestBidder = account.account.highestBidder ? account.account.highestBidder.toBase58() : null;
+
+        // Fetch metadata for the auctioned NFT using Umi
+        const umiMint = new PublicKey(mintAddress);
+        const asset = await fetchDigitalAsset(umi, umiMint);
+
+        let imageUrl = null;
+        let description = asset.metadata.description || 'No description available.';
+
+        if (asset.metadata.uri) {
+          try {
+            const metadataUriToFetch = transformIpfsUrl(asset.metadata.uri);
+            const metadataResponse = await fetch(metadataUriToFetch);
+            if (metadataResponse.ok) {
+              const fetchedMetadata = await metadataResponse.json();
+              if (fetchedMetadata.image) {
+                imageUrl = transformIpfsUrl(fetchedMetadata.image);
+              }
+              if (fetchedMetadata.description) {
+                description = fetchedMetadata.description;
+              }
+            }
+          } catch (metadataErr) {
+            console.error(`Error fetching/parsing metadata for auctioned NFT ${mintAddress}:`, metadataErr);
+          }
+        } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
+            const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
+            if (imageFile) {
+                imageUrl = transformIpfsUrl(imageFile.uri);
+            }
+        }
+        return { mintAddress, name: asset.metadata.name, symbol: asset.metadata.symbol, image: imageUrl, description, seller, initialPrice, startTime, endTime, highestBid, highestBidder };
+      });
+      return (await Promise.all(activeAuctionsPromises)).filter(Boolean);
+    } catch (err) {
+      console.error("Error fetching active auctions from program:", err);
+      toast.error("Failed to load active auctions from the blockchain.");
+      return [];
+    }
+  }, [program, umi, transformIpfsUrl]); // Dependencies for this useCallback
+
 
   // Refined useEffect for wallet connection prompt
   useEffect(() => {
     if (!connected) {
       const timer = setTimeout(() => {
         toast('Please connect your wallet to view your NFTs!', { icon: '👋', id: 'connect-prompt' });
-        // Removed setVisible(true) from here to avoid auto-opening modal
       }, 500);
       return () => clearTimeout(timer);
     } else {
       toast.dismiss('connect-prompt');
     }
-  }, [connected]); // Dependency array updated
+  }, [connected]);
 
   useEffect(() => {
     if (nfts.length > 0 && !loading && currentPage === 1) {
@@ -130,7 +257,7 @@ function BuySell() {
 
   const fetchNfts = useCallback(async () => {
     // Ensure necessary context values are available
-    if (!connected || !publicKey || !umi) { // Check for umi instead of helius
+    if (!connected || !publicKey || !umi || !program) {
       setNfts([]);
       setTotalNfts(0);
       setLoading(false);
@@ -142,69 +269,71 @@ function BuySell() {
     toast.loading(`Loading NFTs - Page ${currentPage}...`, { id: 'loading-nfts' });
 
     try {
-      // Use Umi's fetchAllDigitalAssetByOwner
-      // Note: This fetches ALL NFTs, pagination is done client-side.
-      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey );
-
-      console.log("Umi fetchAllDigitalAssetByOwner response (full list):", allDigitalAssets);
+      // 1. Fetch all NFTs owned by the wallet
+      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey);
 
       if (!allDigitalAssets || !Array.isArray(allDigitalAssets)) {
         throw new Error("Invalid response structure from Umi fetchAllDigitalAssetByOwner.");
       }
 
-      // Set total NFTs based on the full list length
-      setTotalNfts(allDigitalAssets.length);
+      // 2. Fetch actively listed NFTs from your Solana program
+      const listedSales = await fetchActiveSales();
+      const listedAuctions = await fetchActiveAuctions();
 
-      const storedListedNftsForSale = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
-      const listedForSaleMintAddresses = new Set(storedListedNftsForSale.map(nft => nft.mintAddress));
+      const listedMintAddresses = new Set([
+        ...listedSales.map(nft => nft.mintAddress),
+        ...listedAuctions.map(nft => nft.mintAddress)
+      ]);
 
-      const storedListedNftsForAuction = JSON.parse(localStorage.getItem('listedNftsForAuction') || '[]');
-      const listedForAuctionMintAddresses = new Set(storedListedNftsForAuction.map(nft => nft.mintAddress));
-
-      // Filter out listed NFTs *before* pagination
+      // 3. Filter out NFTs that are currently listed for sale or auction
       const unlistedDigitalAssets = allDigitalAssets.filter(asset =>
-        !listedForSaleMintAddresses.has(toWeb3JsPublicKey(asset.publicKey).toBase58()) &&
-        !listedForAuctionMintAddresses.has(toWeb3JsPublicKey(asset.publicKey).toBase58())
+        !listedMintAddresses.has(toWeb3JsPublicKey(asset.publicKey).toBase58())
       );
 
-      // Apply client-side pagination to the unlisted NFTs
+      // Set total NFTs based on the full list length of *unlisted* assets
+      setTotalNfts(unlistedDigitalAssets.length);
+
+      // 4. Apply client-side pagination to the *unlisted* NFTs
       const startIndex = (currentPage - 1) * nftsPerPage;
       const endIndex = startIndex + nftsPerPage;
       const paginatedDigitalAssets = unlistedDigitalAssets.slice(startIndex, endIndex);
 
+      // 5. Process the paginated, unlisted NFTs to get image/description
       const processedNftsPromises = paginatedDigitalAssets.map(async (asset) => {
         let imageUrl = null;
-        let description = asset.metadata.description || 'No description available.'; // Umi asset has metadata.description
+        let description = asset.metadata.description || 'No description available.';
 
-        // Umi's DigitalAsset object has metadata.uri which points to the JSON metadata
-        // We need to fetch this JSON to get the actual image URL and potentially a richer description
         if (asset.metadata.uri) {
           try {
-            const metadataResponse = await fetch(asset.metadata.uri);
-            if (!metadataResponse.ok) {
-              console.warn(`Failed to fetch metadata from ${asset.metadata.uri}: HTTP status ${metadataResponse.status}`);
+            const metadataUriToFetch = transformIpfsUrl(asset.metadata.uri);
+            if (!metadataUriToFetch) {
+                console.warn(`Invalid or unresolvable metadata URI for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}`);
             } else {
-              const fetchedMetadata = await metadataResponse.json();
-              if (fetchedMetadata.image) {
-                imageUrl = fetchedMetadata.image;
-              }
-              if (fetchedMetadata.description) { // Prioritize fetched description if available
-                description = fetchedMetadata.description;
-              }
+                const metadataResponse = await fetch(metadataUriToFetch);
+                if (!metadataResponse.ok) {
+                  console.warn(`Failed to fetch metadata from ${metadataUriToFetch}: HTTP status ${metadataResponse.status}`);
+                } else {
+                  const fetchedMetadata = await metadataResponse.json();
+                  if (fetchedMetadata.image) {
+                    imageUrl = transformIpfsUrl(fetchedMetadata.image);
+                  }
+                  if (fetchedMetadata.description) {
+                    description = fetchedMetadata.description;
+                  }
+                }
             }
           } catch (metadataErr) {
             console.error(`Error fetching/parsing metadata from json_uri for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, metadataErr);
           }
         } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
-            // Fallback: sometimes image URI might be directly in content.files
             const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
             if (imageFile) {
-                imageUrl = imageFile.uri;
+                imageUrl = transformIpfsUrl(imageFile.uri);
             }
         }
 
         return {
-          mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(), // Convert Umi PublicKey to string
+          mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(),
           name: asset.metadata.name || `Unnamed NFT #${toWeb3JsPublicKey(asset.publicKey).toBase58().substring(0, 6)}`,
           symbol: asset.metadata.symbol || '',
           image: imageUrl,
@@ -213,9 +342,8 @@ function BuySell() {
       });
 
       const fetchedNfts = await Promise.all(processedNftsPromises);
-
       setNfts(fetchedNfts);
-      toast.success(`NFTs loaded successfully! (Page ${currentPage} of ${Math.ceil(unlistedDigitalAssets.length / nftsPerPage)})`, { id: 'loading-nfts' }); // Use unlistedDigitalAssets.length for total pages
+      toast.success(`NFTs loaded successfully! (Page ${currentPage} of ${Math.ceil(unlistedDigitalAssets.length / nftsPerPage)})`, { id: 'loading-nfts' });
 
     } catch (err) {
       console.error("Error fetching Solana NFTs with Umi:", err);
@@ -232,7 +360,8 @@ function BuySell() {
     } finally {
       setLoading(false);
     }
-  }, [publicKey, connected, currentPage, nftsPerPage, helius]); // helius must be a dependency here
+  }, [publicKey, connected, currentPage, nftsPerPage, program, umi, fetchActiveSales, fetchActiveAuctions, transformIpfsUrl]);
+
 
   useEffect(() => {
     fetchNfts();
@@ -248,14 +377,14 @@ function BuySell() {
     setSelectedNft(nft);
     setIsSellModalOpen(true);
     setIsAuctionModalOpen(false);
-    setIsDetailModalOpen(false); // Close detail modal if open
+    setIsDetailModalOpen(false);
   }, []);
 
   const handleAuctionClick = useCallback((nft) => {
     setSelectedNft(nft);
     setIsAuctionModalOpen(true);
     setIsSellModalOpen(false);
-    setIsDetailModalOpen(false); // Close detail modal if open
+    setIsDetailModalOpen(false);
   }, []);
 
   const handleConfirmSell = useCallback(async (nft, price) => {
@@ -272,6 +401,9 @@ function BuySell() {
           seller: publicKey,
           mint: new PublicKey(nft.mintAddress),
           tokenProgram: TOKEN_PROGRAM_ID,
+          // Add any other necessary accounts for your createListing instruction here
+          // For example, if your listing account is a PDA derived from mint + seller:
+          // listingAccount: YOUR_LISTING_PDA_HERE,
         })
         .instruction();
 
@@ -288,18 +420,13 @@ function BuySell() {
       const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
       await provider.connection.confirmTransaction(txSign, "confirmed");
 
-      // Update localStorage and UI
-      const listedNftWithPrice = { ...nft, sellPrice: price, seller: publicKey.toBase58() };
-      const storedListedNfts = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
-      const updatedListedNfts = [...storedListedNfts, listedNftWithPrice];
-      localStorage.setItem('listedNftsForSale', JSON.stringify(updatedListedNfts));
-
-      setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
+      // Removed localStorage updates
+      // Instead, trigger a refetch of NFTs from the blockchain
+      fetchNfts();
 
       toast.success(`Successfully listed ${nft.name} for ${price} SOL!`, { id: 'sell-nft-action' });
       setIsSellModalOpen(false);
-      navigate('/marketplace/live-sell');
+      navigate('/marketplace/live-sell'); // Navigate to the live sales page
     } catch (error) {
       console.error("Error listing NFT for sale:", error);
       let errorMessage = `Failed to list ${nft.name}. Error: ${error.message || 'Unknown error'}`;
@@ -313,7 +440,7 @@ function BuySell() {
       }
       toast.error(errorMessage, { id: 'sell-nft-action' });
     }
-  }, [publicKey, wallet, program, provider, navigate]);
+  }, [publicKey, wallet, program, provider, navigate, fetchNfts]); // Added fetchNfts to dependencies
 
   const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
     if (!program || !provider || !publicKey || !wallet?.adapter) {
@@ -322,13 +449,9 @@ function BuySell() {
     }
     toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
     try {
-
       const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
-
       const auctionStartTimeBN = new anchor.BN(startTime);
       const durationBN = new anchor.BN(duration);
-
-
       const calculatedEndTimeSeconds = startTime + duration;
       const auctionEndTimeBN = new anchor.BN(calculatedEndTimeSeconds);
 
@@ -343,7 +466,6 @@ function BuySell() {
       console.log("DEBUG: NFT Mint Address:", nft.mintAddress);
       console.log("DEBUG: Seller Public Key:", publicKey.toBase58());
 
-
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
         initialPriceLamports,
@@ -355,6 +477,8 @@ function BuySell() {
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
+          // Add any other necessary accounts for your createAuction instruction here
+          // e.g., auctionAccount: YOUR_AUCTION_PDA_HERE,
         })
         .instruction();
 
@@ -364,7 +488,6 @@ function BuySell() {
       const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
       transaction.lastValidBlockHeight = lastValidBlockHeight;
-
       transaction.feePayer = publicKey;
 
       const signedTransaction = await wallet.adapter.signTransaction(transaction);
@@ -372,20 +495,9 @@ function BuySell() {
 
       await provider.connection.confirmTransaction(txSign, "confirmed");
 
-      const listedNftForAuction = {
-        ...nft,
-        initialPrice: initialPrice,
-        startTime: startTime,
-        duration: duration,
-        seller: publicKey.toBase58(),
-        endTime: startTime + duration,
-      };
-      const storedListedNftsForAuction = JSON.parse(localStorage.getItem('listedNftsForAuction') || '[]');
-      const updatedListedNftsForAuction = [...storedListedNftsForAuction, listedNftForAuction];
-      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedListedNftsForAuction));
-
-      setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
+      // Removed localStorage updates
+      // Instead, trigger a refetch of NFTs from the blockchain
+      fetchNfts();
 
       toast.success(`Successfully started auction for ${nft.name}!`, { id: 'auction-nft-action' });
       setIsAuctionModalOpen(false);
@@ -397,7 +509,7 @@ function BuySell() {
         colors: ['#a864fd', '#29cdff', '#78ff44', '#ff718d', '#fdff6a'],
       });
 
-      navigate('/marketplace/auction');
+      navigate('/marketplace/auction'); // Navigate to the live auctions page
 
     } catch (error) {
       console.error("Error starting auction:", error);
@@ -412,7 +524,7 @@ function BuySell() {
       }
       toast.error(errorMessage, { id: 'auction-nft-action' });
     }
-  }, [publicKey, wallet, program, provider, navigate]);
+  }, [publicKey, wallet, program, provider, navigate, fetchNfts]); // Added fetchNfts to dependencies
 
 
   // Pagination functions
@@ -431,10 +543,6 @@ function BuySell() {
   const totalPages = Math.ceil(totalNfts / nftsPerPage);
 
   // Conditional Rendering with Enhanced UI
-  // Note: The primary wallet connection check for route access is now handled by ProtectedRoute
-  // This 'if (!connected)' block serves as a more user-friendly prompt *within* the BuySell component
-  // if a user lands here without a wallet, but ProtectedRoute should have already redirected.
-  // It provides an immediate UI for connecting if they haven't.
   if (!connected) {
     return (
       <div className='min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex flex-col items-center justify-center p-8'>
@@ -457,7 +565,7 @@ function BuySell() {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setVisible(true)} // This triggers the wallet modal
+          onClick={() => setVisible(true)}
           className="mt-8 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
         >
           Connect Wallet
@@ -572,13 +680,13 @@ function BuySell() {
                   nft={nft}
                   onSellClick={handleSellClick}
                   onAuctionClick={handleAuctionClick}
-                  onCardClick={handleNftCardClick} // Make sure this prop is passed to NftCard
+                  onCardClick={handleNftCardClick}
                 />
               ))}
             </motion.div>
           </AnimatePresence>
 
-          {/* Pagination Controls - This is where your "next page" logic is displayed */}
+          {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center mt-12 space-x-4">
               <motion.button
@@ -598,7 +706,7 @@ function BuySell() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={goToNextPage} 
+                onClick={goToNextPage}
                 disabled={currentPage === totalPages || loading}
                 className={`px-6 py-2 rounded-full font-semibold text-white shadow-md transition-all duration-300
                   ${currentPage === totalPages || loading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'}
