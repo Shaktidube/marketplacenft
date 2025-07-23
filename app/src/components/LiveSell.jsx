@@ -286,11 +286,11 @@ function LiveSell() {
       //   program.programId
       // );
 
-      const escrowAta = await getAssociatedTokenAddress(
-        mintPublicKey,
-        listingPda,
-        true
-      );
+      // const escrowAta = await getAssociatedTokenAddress(
+      //   mintPublicKey,
+      //   listingPda,
+      //   true
+      // );
 
       const sellerTokenAccount = await getAssociatedTokenAddress(
         mintPublicKey,
@@ -303,7 +303,7 @@ function LiveSell() {
           seller: publicKey,
           mint: mintPublicKey,
           sellerTokenAccount: sellerTokenAccount,
-          escrowAta: escrowAta,
+          // escrowAta: escrowAta,
           // listingPda: listingPda,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -506,9 +506,7 @@ function LiveSell() {
           buyer: publicKey,
           seller: sellerPublicKey,
           mint: mintPublicKey,
-          escrowAta: escrowAta,
           buyerTokenAccount: buyerTokenAccount,
-          listingPda: listingPda,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,

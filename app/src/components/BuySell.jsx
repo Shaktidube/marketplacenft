@@ -173,69 +173,46 @@ function BuySell() {
       const paginatedDigitalAssets = unlistedDigitalAssets.slice(startIndex, endIndex);
 
       const processedNftsPromises = paginatedDigitalAssets.map(async (asset) => {
-    let imageUrl = null;
-    let description = asset.metadata.description || 'No description available.';
+        let imageUrl = null;
+        let description = asset.metadata.description || 'No description available.'; // Umi asset has metadata.description
 
-    // Define a function to transform IPFS URLs
-    const transformIpfsUrl = (url) => {
-        if (!url) return null;
-        // Check if it's a Pinata public gateway URL
-        if (url.startsWith('https://gateway.pinata.cloud/ipfs/')) {
-            const cidPath = url.substring('https://gateway.pinata.cloud/ipfs/'.length);
-            // Use Cloudflare's public gateway, which is generally more CORS-friendly
-            return `https://cloudflare-ipfs.com/ipfs/${cidPath}`;
-        }
-        // Add more gateway transformations if needed (e.g., from other providers)
-        // For example, if it's 'ipfs://' protocol
-        if (url.startsWith('ipfs://')) {
-            const cid = url.substring('ipfs://'.length);
-            return `https://cloudflare-ipfs.com/ipfs/${cid}`;
-        }
-        return url; // Return as is if it's not a known IPFS gateway or is already fine
-    };
-
-
-    // 1. Fetch the metadata JSON
-    if (asset.metadata.uri) {
-      try {
-        const metadataUriToFetch = transformIpfsUrl(asset.metadata.uri); // Transform the metadata URI
-        if (!metadataUriToFetch) { // Handle case where transform returns null
-            console.warn(`Invalid or unresolvable metadata URI for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}`);
-        } else {
-            const metadataResponse = await fetch(metadataUriToFetch);
+        // Umi's DigitalAsset object has metadata.uri which points to the JSON metadata
+        // We need to fetch this JSON to get the actual image URL and potentially a richer description
+        if (asset.metadata.uri) {
+          try {
+            const metadataResponse = await fetch(asset.metadata.uri);
             if (!metadataResponse.ok) {
-              console.warn(`Failed to fetch metadata from ${metadataUriToFetch}: HTTP status ${metadataResponse.status}`);
+              console.warn(`Failed to fetch metadata from ${asset.metadata.uri}: HTTP status ${metadataResponse.status}`);
             } else {
               const fetchedMetadata = await metadataResponse.json();
               if (fetchedMetadata.image) {
-                imageUrl = transformIpfsUrl(fetchedMetadata.image); // Transform the image URL from metadata
+                imageUrl = fetchedMetadata.image;
               }
-              if (fetchedMetadata.description) {
+              if (fetchedMetadata.description) { // Prioritize fetched description if available
                 description = fetchedMetadata.description;
               }
             }
+          } catch (metadataErr) {
+            console.error(`Error fetching/parsing metadata from json_uri for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, metadataErr);
+          }
+        } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
+            // Fallback: sometimes image URI might be directly in content.files
+            const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
+            if (imageFile) {
+                imageUrl = imageFile.uri;
+            }
         }
-      } catch (metadataErr) {
-        console.error(`Error fetching/parsing metadata from json_uri for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, metadataErr);
-      }
-    } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
-        // Fallback: sometimes image URI might be directly in content.files
-        const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
-        if (imageFile) {
-            imageUrl = transformIpfsUrl(imageFile.uri); // Transform this fallback URL too
-        }
-    }
 
-    return {
-      mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(),
-      name: asset.metadata.name || `Unnamed NFT #${toWeb3JsPublicKey(asset.publicKey).toBase58().substring(0, 6)}`,
-      symbol: asset.metadata.symbol || '',
-      image: imageUrl, // This is the transformed URL
-      description: description,
-    };
-});
+        return {
+          mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(), // Convert Umi PublicKey to string
+          name: asset.metadata.name || `Unnamed NFT #${toWeb3JsPublicKey(asset.publicKey).toBase58().substring(0, 6)}`,
+          symbol: asset.metadata.symbol || '',
+          image: imageUrl,
+          description: description,
+        };
+      });
 
-const fetchedNfts = await Promise.all(processedNftsPromises);
+      const fetchedNfts = await Promise.all(processedNftsPromises);
 
       setNfts(fetchedNfts);
       toast.success(`NFTs loaded successfully! (Page ${currentPage} of ${Math.ceil(unlistedDigitalAssets.length / nftsPerPage)})`, { id: 'loading-nfts' }); // Use unlistedDigitalAssets.length for total pages
