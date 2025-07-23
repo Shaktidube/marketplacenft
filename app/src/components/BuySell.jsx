@@ -415,7 +415,7 @@ function BuySell() {
       await provider.connection.confirmTransaction(txSign, "confirmed");
 
       setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
+      setTotalUnlistedNfts(prevTotal => prevTotal - 1);
 
       toast.success(`Successfully started auction for ${nft.name}!`, { id: 'auction-nft-action' });
       setIsAuctionModalOpen(false);
