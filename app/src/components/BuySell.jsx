@@ -1,8 +1,8 @@
-// BuySell.js
+// BuySell.jsx
 import React, { useEffect, useState, useCallback } from 'react';
-import * as anchor from "@coral-xyz/anchor"; // Still needed for anchor.BN and anchor.web3.LAMPORTS_PER_SOL
+import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { useWallet } from "@solana/wallet-adapter-react"; // Keep useWallet for 'wallet' and 'connected'
+import { useWallet } from "@solana/wallet-adapter-react";
 import toast from 'react-hot-toast';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import confetti from 'canvas-confetti';
@@ -12,10 +12,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import NftCard from './NftCard';
 import SellModal from './SellModal';
 import AuctionModal from './AuctionModal';
-import NftDetailModal from './NftDetailModal'; // Ensure this is imported
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import NftDetailModal from './NftDetailModal';
+import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction } from '@solana/spl-token'; // Added getAssociatedTokenAddressSync and createAssociatedTokenAccountInstruction
 
-import { useSolanaProgram } from '../contexts/SolanaProgramContext'; // Import the context hook
+import { useSolanaProgram } from '../contexts/SolanaProgramContext';
 import { fetchAllDigitalAssetByOwner } from '@metaplex-foundation/mpl-token-metadata';
 import { toWeb3JsPublicKey } from '@metaplex-foundation/umi-web3js-adapters';
 
@@ -55,7 +55,7 @@ const spinnerVariants = {
   },
 };
 
-// Custom hook for wallet popup detection (can remain here)
+// Custom hook for wallet popup detection
 const useWalletPopupDetection = () => {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
 
@@ -79,26 +79,25 @@ const useWalletPopupDetection = () => {
 };
 
 function BuySell() {
-  // Destructure from the context hook
-  const { program, provider, helius, umi,connection, connected, publicKey } = useSolanaProgram();
-  const { wallet } = useWallet(); // Still need wallet object for adapter access
+  const { program, provider, umi, connection, connected, publicKey } = useSolanaProgram(); // Ensure connection is available
+  const { wallet } = useWallet();
 
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { setVisible } = useWalletModal(); // For opening the wallet modal manually
+  const { setVisible } = useWalletModal();
   const navigate = useNavigate();
-  const walletPopupVisible = useWalletPopupDetection(); // Using the custom hook
+  const walletPopupVisible = useWalletPopupDetection();
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [nftsPerPage] = useState(20);
-  const [totalNfts, setTotalNfts] = useState(0);
+  const [totalUnlistedNfts, setTotalUnlistedNfts] = useState(0); // Renamed to accurately reflect what's paginated
 
   // States for Modals
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
-  const [selectedNft, setSelectedNft] = useState(null); // Used for Sell/Auction modals
+  const [selectedNft, setSelectedNft] = useState(null);
 
   // New states for NFT Detail Modal
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -109,15 +108,15 @@ function BuySell() {
     if (!connected) {
       const timer = setTimeout(() => {
         toast('Please connect your wallet to view your NFTs!', { icon: '👋', id: 'connect-prompt' });
-        // Removed setVisible(true) from here to avoid auto-opening modal
       }, 500);
       return () => clearTimeout(timer);
     } else {
       toast.dismiss('connect-prompt');
     }
-  }, [connected]); // Dependency array updated
+  }, [connected]);
 
   useEffect(() => {
+    // Only show confetti on the first page load and if NFTs are actually displayed
     if (nfts.length > 0 && !loading && currentPage === 1) {
       confetti({
         particleCount: 200,
@@ -129,10 +128,9 @@ function BuySell() {
   }, [nfts, loading, currentPage]);
 
   const fetchNfts = useCallback(async () => {
-    // Ensure necessary context values are available
-    if (!connected || !publicKey || !umi) { // Check for umi instead of helius
+    if (!connected || !publicKey || !umi || !program || !connection) { // Ensure program and connection are available
       setNfts([]);
-      setTotalNfts(0);
+      setTotalUnlistedNfts(0);
       setLoading(false);
       return;
     }
@@ -142,42 +140,35 @@ function BuySell() {
     toast.loading(`Loading NFTs - Page ${currentPage}...`, { id: 'loading-nfts' });
 
     try {
-      // Use Umi's fetchAllDigitalAssetByOwner
-      // Note: This fetches ALL NFTs, pagination is done client-side.
-      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey );
+      // 1. Fetch all digital assets (NFTs) owned by the wallet using Umi
+      const allDigitalAssets = await fetchAllDigitalAssetByOwner(umi, publicKey);
 
-      console.log("Umi fetchAllDigitalAssetByOwner response (full list):", allDigitalAssets);
+      // 2. Fetch all active listings from your Solana program
+      const allListingAccounts = await program.account.listing.all();
+      const listedForSaleMintAddresses = new Set(allListingAccounts.map(account => account.account.mint.toBase58()));
 
-      if (!allDigitalAssets || !Array.isArray(allDigitalAssets)) {
-        throw new Error("Invalid response structure from Umi fetchAllDigitalAssetByOwner.");
-      }
+      // 3. Fetch all active auctions from your Solana program
+      const allAuctionAccounts = await program.account.auction.all(); // Assuming your auction account type is named 'auction'
+      const listedForAuctionMintAddresses = new Set(allAuctionAccounts.map(account => account.account.nftMint.toBase58()));
 
-      // Set total NFTs based on the full list length
-      setTotalNfts(allDigitalAssets.length);
+      // 4. Filter out NFTs that are already listed for sale or auction on-chain
+      const unlistedDigitalAssets = allDigitalAssets.filter(asset => {
+        const mintAddress = toWeb3JsPublicKey(asset.publicKey).toBase58();
+        return !listedForSaleMintAddresses.has(mintAddress) && !listedForAuctionMintAddresses.has(mintAddress);
+      });
 
-      const storedListedNftsForSale = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
-      const listedForSaleMintAddresses = new Set(storedListedNftsForSale.map(nft => nft.mintAddress));
+      // Set total unlisted NFTs for pagination
+      setTotalUnlistedNfts(unlistedDigitalAssets.length);
 
-      const storedListedNftsForAuction = JSON.parse(localStorage.getItem('listedNftsForAuction') || '[]');
-      const listedForAuctionMintAddresses = new Set(storedListedNftsForAuction.map(nft => nft.mintAddress));
-
-      // Filter out listed NFTs *before* pagination
-      const unlistedDigitalAssets = allDigitalAssets.filter(asset =>
-        !listedForSaleMintAddresses.has(toWeb3JsPublicKey(asset.publicKey).toBase58()) &&
-        !listedForAuctionMintAddresses.has(toWeb3JsPublicKey(asset.publicKey).toBase58())
-      );
-
-      // Apply client-side pagination to the unlisted NFTs
+      // Apply client-side pagination to the UNLISTED NFTs
       const startIndex = (currentPage - 1) * nftsPerPage;
       const endIndex = startIndex + nftsPerPage;
       const paginatedDigitalAssets = unlistedDigitalAssets.slice(startIndex, endIndex);
 
       const processedNftsPromises = paginatedDigitalAssets.map(async (asset) => {
         let imageUrl = null;
-        let description = asset.metadata.description || 'No description available.'; // Umi asset has metadata.description
+        let description = asset.metadata.description || 'No description available.';
 
-        // Umi's DigitalAsset object has metadata.uri which points to the JSON metadata
-        // We need to fetch this JSON to get the actual image URL and potentially a richer description
         if (asset.metadata.uri) {
           try {
             const metadataResponse = await fetch(asset.metadata.uri);
@@ -188,23 +179,35 @@ function BuySell() {
               if (fetchedMetadata.image) {
                 imageUrl = fetchedMetadata.image;
               }
-              if (fetchedMetadata.description) { // Prioritize fetched description if available
+              if (fetchedMetadata.description) {
                 description = fetchedMetadata.description;
               }
             }
           } catch (metadataErr) {
-            console.error(`Error fetching/parsing metadata from json_uri for ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, metadataErr);
+            console.error(`Error fetching/parsing metadata from json_uri for NFT ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, metadataErr);
           }
         } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
-            // Fallback: sometimes image URI might be directly in content.files
             const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
             if (imageFile) {
                 imageUrl = imageFile.uri;
             }
         }
 
+        // You also need the token account (ATA) address for the NFT in the user's wallet
+        // This is crucial for the `sellerTokenAccount` in your `list_nft` instruction
+        let tokenAccountAddress = null;
+        try {
+            tokenAccountAddress = await getAssociatedTokenAddressSync(
+                new PublicKey(toWeb3JsPublicKey(asset.publicKey)), // Mint
+                publicKey // Owner
+            ).toBase58();
+        } catch (ataErr) {
+            console.warn(`Could not find ATA for NFT ${toWeb3JsPublicKey(asset.publicKey).toBase58()}:`, ataErr);
+        }
+
         return {
-          mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(), // Convert Umi PublicKey to string
+          mintAddress: toWeb3JsPublicKey(asset.publicKey).toBase58(),
+          tokenAccount: tokenAccountAddress, // Include token account here
           name: asset.metadata.name || `Unnamed NFT #${toWeb3JsPublicKey(asset.publicKey).toBase58().substring(0, 6)}`,
           symbol: asset.metadata.symbol || '',
           image: imageUrl,
@@ -214,31 +217,28 @@ function BuySell() {
 
       const fetchedNfts = await Promise.all(processedNftsPromises);
 
-      setNfts(fetchedNfts);
-      toast.success(`NFTs loaded successfully! (Page ${currentPage} of ${Math.ceil(unlistedDigitalAssets.length / nftsPerPage)})`, { id: 'loading-nfts' }); // Use unlistedDigitalAssets.length for total pages
+      setNfts(fetchedNfts.filter(nft => nft.tokenAccount !== null)); // Filter out NFTs for which ATA couldn't be found (shouldn't happen for owned NFTs)
+      toast.success(`NFTs loaded successfully! (Page ${currentPage} of ${Math.ceil(unlistedDigitalAssets.length / nftsPerPage)})`, { id: 'loading-nfts' });
 
     } catch (err) {
       console.error("Error fetching Solana NFTs with Umi:", err);
-      let userMessage = "Failed to fetch NFTs. Please check your wallet connection or an issue with Umi.";
-
+      let userMessage = "Failed to fetch NFTs. Please check your wallet connection or an issue with the service.";
       if (err.message.includes('Invalid response structure')) {
         userMessage = "Received an unexpected response from the NFT service. Please try again.";
       } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
         userMessage = "Network error. Please check your internet connection.";
       }
-
       setError(userMessage);
       toast.error(userMessage, { id: 'loading-nfts' });
     } finally {
       setLoading(false);
     }
-  }, [publicKey, connected, currentPage, nftsPerPage, helius]); // helius must be a dependency here
+  }, [publicKey, connected, currentPage, nftsPerPage, umi, program, connection]); // Dependencies updated
 
   useEffect(() => {
     fetchNfts();
   }, [fetchNfts]);
 
-  // Handle NFT card click to open detail modal
   const handleNftCardClick = useCallback((nft) => {
     setSelectedNftForDetail(nft);
     setIsDetailModalOpen(true);
@@ -248,35 +248,78 @@ function BuySell() {
     setSelectedNft(nft);
     setIsSellModalOpen(true);
     setIsAuctionModalOpen(false);
-    setIsDetailModalOpen(false); // Close detail modal if open
+    setIsDetailModalOpen(false);
   }, []);
 
   const handleAuctionClick = useCallback((nft) => {
     setSelectedNft(nft);
     setIsAuctionModalOpen(true);
     setIsSellModalOpen(false);
-    setIsDetailModalOpen(false); // Close detail modal if open
+    setIsDetailModalOpen(false);
   }, []);
 
   const handleConfirmSell = useCallback(async (nft, price) => {
-    if (!program || !provider || !publicKey || !wallet?.adapter) {
-      toast.error("Wallet not connected or program not initialized.");
+    if (!program || !provider || !publicKey || !wallet?.adapter || !connection) {
+      toast.error("Wallet not connected, program not initialized, or connection missing.");
       return;
     }
     toast.loading(`Listing ${nft.name} for ${price} SOL...`, { id: 'sell-nft-action' });
 
     try {
-      const listingPriceInLamports = new anchor.BN(price * anchor.web3.LAMPORTS_PER_SOL);
-      const listNftInstruction = await program.methods.createListing(listingPriceInLamports)
+      const mintPublicKey = new PublicKey(nft.mintAddress);
+      // Ensure nft.tokenAccount is correctly populated when fetching NFTs
+      // It should be the PublicKey of the ATA holding this specific NFT in the seller's wallet
+      const sellerTokenAccount = new PublicKey(nft.tokenAccount); 
+
+      // Derive the PDA for the listing account
+      // This MUST match the seeds used in your Anchor program for the `listing` account
+      const [listingPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("listing"), mintPublicKey.toBuffer()], // Matches your program's seeds
+        program.programId
+      );
+
+      // Derive the Associated Token Account for the listing PDA (escrow ATA)
+      const escrowAta = getAssociatedTokenAddressSync(
+        mintPublicKey,
+        listingPda, // Owner is the PDA itself
+        true // allow owner off curve (necessary if PDA is the owner)
+      );
+
+      const transaction = new Transaction();
+
+      // Check if escrow ATA exists, if not, add instruction to create it
+      const escrowAtaInfo = await connection.getAccountInfo(escrowAta);
+      if (!escrowAtaInfo) {
+        const createEscrowAtaInstruction = createAssociatedTokenAccountInstruction(
+          publicKey, // Payer to create the ATA (your wallet)
+          escrowAta, // ATA address to create
+          listingPda, // Owner of the new ATA (the listing PDA)
+          mintPublicKey, // Mint of the token
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+        transaction.add(createEscrowAtaInstruction);
+      }
+
+      // Add the list_nft instruction to the transaction
+      // Assuming your program's instruction is `list_nft` or `createListing` and takes a price BN
+      const priceLamports = new anchor.BN(price * anchor.web3.LAMPORTS_PER_SOL);
+      const listInstruction = await program.methods
+        .createListing(priceLamports) // Changed from listNft to createListing based on your auction method
         .accounts({
           seller: publicKey,
-          mint: new PublicKey(nft.mintAddress),
+          mint: mintPublicKey,
+          sellerTokenAccount: sellerTokenAccount, // Pass the seller's ATA
+          escrowAta: escrowAta,
+          listingAccount: listingPda,
           tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: SYSVAR_RENT_PUBKEY,
         })
         .instruction();
 
-      const transaction = new Transaction();
-      transaction.add(listNftInstruction);
+      transaction.add(listInstruction);
 
       const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
@@ -284,22 +327,21 @@ function BuySell() {
       transaction.feePayer = publicKey;
 
       const signedTransaction = await wallet.adapter.signTransaction(transaction);
-
       const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
-      await provider.connection.confirmTransaction(txSign, "confirmed");
 
-      // Update localStorage and UI
-      const listedNftWithPrice = { ...nft, sellPrice: price, seller: publicKey.toBase58() };
-      const storedListedNfts = JSON.parse(localStorage.getItem('listedNftsForSale') || '[]');
-      const updatedListedNfts = [...storedListedNfts, listedNftWithPrice];
-      localStorage.setItem('listedNftsForSale', JSON.stringify(updatedListedNfts));
+      await provider.connection.confirmTransaction({
+          signature: txSign,
+          blockhash: blockhash,
+          lastValidBlockHeight: lastValidBlockHeight,
+      }, "confirmed");
 
+      // No localStorage updates needed here! The NFT is removed from the UI because fetchNfts will now filter it out.
       setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
+      setTotalUnlistedNfts(prevTotal => prevTotal - 1); // Update total count
 
       toast.success(`Successfully listed ${nft.name} for ${price} SOL!`, { id: 'sell-nft-action' });
       setIsSellModalOpen(false);
-      navigate('/marketplace/live-sell');
+      navigate('/marketplace/live-sell'); // Navigate to live sell page
     } catch (error) {
       console.error("Error listing NFT for sale:", error);
       let errorMessage = `Failed to list ${nft.name}. Error: ${error.message || 'Unknown error'}`;
@@ -313,36 +355,60 @@ function BuySell() {
       }
       toast.error(errorMessage, { id: 'sell-nft-action' });
     }
-  }, [publicKey, wallet, program, provider, navigate]);
+  }, [publicKey, wallet, program, provider, navigate, connection]); // Added 'connection' to dependencies
 
   const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
-    if (!program || !provider || !publicKey || !wallet?.adapter) {
-      toast.error("Wallet not connected or program not initialized.");
+    if (!program || !provider || !publicKey || !wallet?.adapter || !connection) {
+      toast.error("Wallet not connected, program not initialized, or connection missing.");
       return;
     }
     toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
     try {
+      const mintPublicKey = new PublicKey(nft.mintAddress);
+      const sellerTokenAccount = new PublicKey(nft.tokenAccount); // Seller's ATA
+
+      // Derive the PDA for the auction account
+      // This MUST match the seeds used in your Anchor program for the `auction` account
+      const [auctionPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("auction"), mintPublicKey.toBuffer()], // Matches your program's seeds
+        program.programId
+      );
+
+      // Derive the Associated Token Account for the auction PDA (escrow ATA)
+      const escrowAta = getAssociatedTokenAddressSync(
+        mintPublicKey,
+        auctionPda, // Owner is the PDA itself
+        true // allow owner off curve
+      );
+
+      const transaction = new Transaction();
+
+      // Check if escrow ATA exists, if not, add instruction to create it
+      const escrowAtaInfo = await connection.getAccountInfo(escrowAta);
+      if (!escrowAtaInfo) {
+        const createEscrowAtaInstruction = createAssociatedTokenAccountInstruction(
+          publicKey, // Payer to create the ATA (your wallet)
+          escrowAta, // ATA address to create
+          auctionPda, // Owner of the new ATA (the auction PDA)
+          mintPublicKey, // Mint of the token
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+        transaction.add(createEscrowAtaInstruction);
+      }
 
       const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
-
       const auctionStartTimeBN = new anchor.BN(startTime);
-      const durationBN = new anchor.BN(duration);
-
-
-      const calculatedEndTimeSeconds = startTime + duration;
-      const auctionEndTimeBN = new anchor.BN(calculatedEndTimeSeconds);
+      const durationBN = new anchor.BN(duration); // Duration in seconds as a BN
 
       console.log("DEBUG: Initial Price (SOL):", initialPrice);
       console.log("DEBUG: Initial Price (Lamports BN):", initialPriceLamports.toString());
       console.log("DEBUG: Auction Start Time (raw seconds):", startTime);
       console.log("DEBUG: Auction Start Time (BN):", auctionStartTimeBN.toString());
       console.log("DEBUG: Auction Duration (raw seconds):", duration);
-      console.log("DEBUG: Auction Duration (BN):", new anchor.BN(duration).toString());
-      console.log("DEBUG: Calculated End Time (raw seconds):", calculatedEndTimeSeconds);
-      console.log("DEBUG: Auction End Time (BN):", auctionEndTimeBN.toString());
+      console.log("DEBUG: Auction Duration (BN):", durationBN.toString());
       console.log("DEBUG: NFT Mint Address:", nft.mintAddress);
       console.log("DEBUG: Seller Public Key:", publicKey.toBase58());
-
 
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
@@ -351,41 +417,36 @@ function BuySell() {
       )
         .accounts({
           seller: publicKey,
-          nftMint: new PublicKey(nft.mintAddress),
+          nftMint: mintPublicKey, // Corrected to nftMint based on your auction method's account
+          sellerTokenAccount: sellerTokenAccount, // Pass the seller's ATA
+          escrowAta: escrowAta,
+          auctionAccount: auctionPda, // Your auction PDA account
           tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
         })
         .instruction();
 
-      const transaction = new Transaction();
       transaction.add(startAuctionInstruction);
 
       const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
       transaction.lastValidBlockHeight = lastValidBlockHeight;
-
       transaction.feePayer = publicKey;
 
       const signedTransaction = await wallet.adapter.signTransaction(transaction);
       const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
 
-      await provider.connection.confirmTransaction(txSign, "confirmed");
+      await provider.connection.confirmTransaction({
+          signature: txSign,
+          blockhash: blockhash,
+          lastValidBlockHeight: lastValidBlockHeight,
+      }, "confirmed");
 
-      const listedNftForAuction = {
-        ...nft,
-        initialPrice: initialPrice,
-        startTime: startTime,
-        duration: duration,
-        seller: publicKey.toBase58(),
-        endTime: startTime + duration,
-      };
-      const storedListedNftsForAuction = JSON.parse(localStorage.getItem('listedNftsForAuction') || '[]');
-      const updatedListedNftsForAuction = [...storedListedNftsForAuction, listedNftForAuction];
-      localStorage.setItem('listedNftsForAuction', JSON.stringify(updatedListedNftsForAuction));
-
+      // No localStorage updates needed here!
       setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalNfts(prevTotal => prevTotal - 1);
+      setTotalUnlistedNfts(prevTotal => prevTotal - 1);
 
       toast.success(`Successfully started auction for ${nft.name}!`, { id: 'auction-nft-action' });
       setIsAuctionModalOpen(false);
@@ -412,12 +473,12 @@ function BuySell() {
       }
       toast.error(errorMessage, { id: 'auction-nft-action' });
     }
-  }, [publicKey, wallet, program, provider, navigate]);
+  }, [publicKey, wallet, program, provider, navigate, connection]); // Added 'connection' to dependencies
 
 
   // Pagination functions
   const goToNextPage = () => {
-    if (currentPage * nftsPerPage < totalNfts) {
+    if (currentPage * nftsPerPage < totalUnlistedNfts) {
       setCurrentPage(prevPage => prevPage + 1);
     }
   };
@@ -428,13 +489,8 @@ function BuySell() {
     }
   };
 
-  const totalPages = Math.ceil(totalNfts / nftsPerPage);
+  const totalPages = Math.ceil(totalUnlistedNfts / nftsPerPage);
 
-  // Conditional Rendering with Enhanced UI
-  // Note: The primary wallet connection check for route access is now handled by ProtectedRoute
-  // This 'if (!connected)' block serves as a more user-friendly prompt *within* the BuySell component
-  // if a user lands here without a wallet, but ProtectedRoute should have already redirected.
-  // It provides an immediate UI for connecting if they haven't.
   if (!connected) {
     return (
       <div className='min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex flex-col items-center justify-center p-8'>
@@ -457,7 +513,7 @@ function BuySell() {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => setVisible(true)} // This triggers the wallet modal
+          onClick={() => setVisible(true)}
           className="mt-8 px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
         >
           Connect Wallet
@@ -511,8 +567,7 @@ function BuySell() {
     );
   }
 
-  const displayNfts = nfts.length > 0;
-  const displayNoNftsMessage = !loading && nfts.length === 0 && totalNfts === 0;
+  const displayNoNftsMessage = !loading && nfts.length === 0 && totalUnlistedNfts === 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black p-4 md:p-8 overflow-y-auto custom-scrollbar-hidden">
@@ -533,7 +588,6 @@ function BuySell() {
         Showing NFTs for: <span className="font-mono text-purple-300 break-all">{publicKey ? publicKey.toBase58() : 'Connect Wallet'}</span>
       </motion.p>
 
-      {/* Button to navigate to Live Sell page - Made more responsive */}
       <div className="text-center mb-8 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
         <Link to="/marketplace/live-sell"
           className="px-6 py-2 bg-gradient-to-r from-teal-500 to-emerald-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 w-full sm:w-auto"
@@ -558,7 +612,6 @@ function BuySell() {
         </div>
       ) : (
         <>
-          {/* NFT Grid */}
           <AnimatePresence>
             <motion.div
               className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8'
@@ -572,13 +625,12 @@ function BuySell() {
                   nft={nft}
                   onSellClick={handleSellClick}
                   onAuctionClick={handleAuctionClick}
-                  onCardClick={handleNftCardClick} // Make sure this prop is passed to NftCard
+                  onCardClick={handleNftCardClick}
                 />
               ))}
             </motion.div>
           </AnimatePresence>
 
-          {/* Pagination Controls - This is where your "next page" logic is displayed */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center mt-12 space-x-4">
               <motion.button
@@ -598,7 +650,7 @@ function BuySell() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={goToNextPage} 
+                onClick={goToNextPage}
                 disabled={currentPage === totalPages || loading}
                 className={`px-6 py-2 rounded-full font-semibold text-white shadow-md transition-all duration-300
                   ${currentPage === totalPages || loading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'}
@@ -611,7 +663,6 @@ function BuySell() {
         </>
       )}
 
-      {/* Your Modals */}
       {selectedNft && (
         <>
           <SellModal
@@ -629,7 +680,6 @@ function BuySell() {
         </>
       )}
 
-      {/* NFT Detail Modal */}
       <NftDetailModal
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
@@ -649,12 +699,12 @@ function BuySell() {
 
       <style jsx>{`
         .custom-scrollbar-hidden {
-          -ms-overflow-style: none; /* IE and Edge */
-          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none;
+          scrollbar-width: none;
         }
 
         .custom-scrollbar-hidden::-webkit-scrollbar {
-          display: none; /* Chrome, Safari, Opera */
+          display: none;
         }
       `}</style>
     </div>
