@@ -358,57 +358,33 @@ function BuySell() {
   }, [publicKey, wallet, program, provider, navigate, connection]); // Added 'connection' to dependencies
 
   const handleConfirmAuction = useCallback(async (nft, initialPrice, startTime, duration) => {
-    if (!program || !provider || !publicKey || !wallet?.adapter || !connection) {
-      toast.error("Wallet not connected, program not initialized, or connection missing.");
+    if (!program || !provider || !publicKey || !wallet?.adapter) {
+      toast.error("Wallet not connected or program not initialized.");
       return;
     }
     toast.loading(`Starting auction for ${nft.name}...`, { id: 'auction-nft-action' });
     try {
-      const mintPublicKey = new PublicKey(nft.mintAddress);
-      const sellerTokenAccount = new PublicKey(nft.tokenAccount); // Seller's ATA
-
-      // Derive the PDA for the auction account
-      // This MUST match the seeds used in your Anchor program for the `auction` account
-      const [auctionPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("auction"), mintPublicKey.toBuffer()], // Matches your program's seeds
-        program.programId
-      );
-
-      // Derive the Associated Token Account for the auction PDA (escrow ATA)
-      const escrowAta = getAssociatedTokenAddressSync(
-        mintPublicKey,
-        auctionPda, // Owner is the PDA itself
-        true // allow owner off curve
-      );
-
-      const transaction = new Transaction();
-
-      // Check if escrow ATA exists, if not, add instruction to create it
-      const escrowAtaInfo = await connection.getAccountInfo(escrowAta);
-      if (!escrowAtaInfo) {
-        const createEscrowAtaInstruction = createAssociatedTokenAccountInstruction(
-          publicKey, // Payer to create the ATA (your wallet)
-          escrowAta, // ATA address to create
-          auctionPda, // Owner of the new ATA (the auction PDA)
-          mintPublicKey, // Mint of the token
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        );
-        transaction.add(createEscrowAtaInstruction);
-      }
 
       const initialPriceLamports = new anchor.BN(initialPrice * anchor.web3.LAMPORTS_PER_SOL);
+
       const auctionStartTimeBN = new anchor.BN(startTime);
-      const durationBN = new anchor.BN(duration); // Duration in seconds as a BN
+      const durationBN = new anchor.BN(duration);
+
+
+      const calculatedEndTimeSeconds = startTime + duration;
+      const auctionEndTimeBN = new anchor.BN(calculatedEndTimeSeconds);
 
       console.log("DEBUG: Initial Price (SOL):", initialPrice);
       console.log("DEBUG: Initial Price (Lamports BN):", initialPriceLamports.toString());
       console.log("DEBUG: Auction Start Time (raw seconds):", startTime);
       console.log("DEBUG: Auction Start Time (BN):", auctionStartTimeBN.toString());
       console.log("DEBUG: Auction Duration (raw seconds):", duration);
-      console.log("DEBUG: Auction Duration (BN):", durationBN.toString());
+      console.log("DEBUG: Auction Duration (BN):", new anchor.BN(duration).toString());
+      console.log("DEBUG: Calculated End Time (raw seconds):", calculatedEndTimeSeconds);
+      console.log("DEBUG: Auction End Time (BN):", auctionEndTimeBN.toString());
       console.log("DEBUG: NFT Mint Address:", nft.mintAddress);
       console.log("DEBUG: Seller Public Key:", publicKey.toBase58());
+
 
       const startAuctionInstruction = await program.methods.createAuction(
         auctionStartTimeBN,
@@ -417,36 +393,29 @@ function BuySell() {
       )
         .accounts({
           seller: publicKey,
-          nftMint: mintPublicKey, // Corrected to nftMint based on your auction method's account
-          sellerTokenAccount: sellerTokenAccount, // Pass the seller's ATA
-          escrowAta: escrowAta,
-          auctionAccount: auctionPda, // Your auction PDA account
+          nftMint: new PublicKey(nft.mintAddress),
           tokenProgram: TOKEN_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
         })
         .instruction();
 
+      const transaction = new Transaction();
       transaction.add(startAuctionInstruction);
 
       const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
       transaction.lastValidBlockHeight = lastValidBlockHeight;
+
       transaction.feePayer = publicKey;
 
       const signedTransaction = await wallet.adapter.signTransaction(transaction);
       const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
 
-      await provider.connection.confirmTransaction({
-          signature: txSign,
-          blockhash: blockhash,
-          lastValidBlockHeight: lastValidBlockHeight,
-      }, "confirmed");
+      await provider.connection.confirmTransaction(txSign, "confirmed");
 
-      // No localStorage updates needed here!
       setNfts(prevNfts => prevNfts.filter(item => item.mintAddress !== nft.mintAddress));
-      setTotalUnlistedNfts(prevTotal => prevTotal - 1);
+      setTotalNfts(prevTotal => prevTotal - 1);
 
       toast.success(`Successfully started auction for ${nft.name}!`, { id: 'auction-nft-action' });
       setIsAuctionModalOpen(false);
@@ -473,7 +442,7 @@ function BuySell() {
       }
       toast.error(errorMessage, { id: 'auction-nft-action' });
     }
-  }, [publicKey, wallet, program, provider, navigate, connection]); // Added 'connection' to dependencies
+  }, [publicKey, wallet, program, provider, navigate]); // Added 'connection' to dependencies
 
 
   // Pagination functions
