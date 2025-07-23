@@ -1,27 +1,33 @@
 // LiveSell.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as anchor from "@coral-xyz/anchor";
 import {
   PublicKey,
   Transaction,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import toast from "react-hot-toast";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
-import { fetchDigitalAsset } from "@metaplex-foundation/mpl-token-metadata";
-import { toWeb3JsPublicKey } from '@metaplex-foundation/umi-web3js-adapters';
-
+import {
+  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
+  Metadata,
+  fetchDigitalAsset,
+} from "@metaplex-foundation/mpl-token-metadata";
 import { useSolanaProgram } from "../contexts/SolanaProgramContext";
 
-// Card animation variants
+
+const METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+
+// Card animation variants (unchanged)
 const cardVariants = {
   hidden: { opacity: 0, y: 50, scale: 0.8 },
   visible: {
@@ -36,7 +42,7 @@ const cardVariants = {
   },
 };
 
-// Container animation variants for the grid
+// Container animation variants for the grid (unchanged)
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -47,21 +53,21 @@ const containerVariants = {
   },
 };
 
-// Full-Screen Success/Delist Animation Variants
+// REFINED Full-Screen Success/Delist Animation Variants (minor adjustment for better flow)
 const successOverlayVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
     transition: {
-      when: "beforeChildren",
-      duration: 0.3,
+      when: "beforeChildren", // Animate overlay in first, then its children
+      duration: 0.3, // Overlay fades in quickly
     },
   },
   exit: {
     opacity: 0,
     transition: {
-      duration: 0.7,
-      when: "afterChildren",
+      duration: 0.7, // Longer exit duration for a smoother fade out
+      when: "afterChildren", // Children fade out first, then overlay
     },
   },
 };
@@ -75,7 +81,7 @@ const successEmojiVariants = {
       type: "spring",
       stiffness: 200,
       damping: 15,
-      delay: 0.1,
+      delay: 0.1, // Slight delay for a pop effect
     },
   },
   exit: { opacity: 0, scale: 0, transition: { duration: 0.2 } },
@@ -90,13 +96,12 @@ const successContentVariants = {
       type: "spring",
       stiffness: 150,
       damping: 10,
-      delay: 0.2,
+      delay: 0.2, // Delayed entry after emoji
     },
   },
   exit: { opacity: 0, y: -30, transition: { duration: 0.2 } },
 };
 
-// --- NftDetailModal Component (Moved here for easier access to transformIpfsUrl if needed) ---
 const NftDetailModal = ({ isOpen, onClose, nft }) => {
   if (!isOpen || !nft) return null;
 
@@ -214,138 +219,55 @@ const NftDetailModal = ({ isOpen, onClose, nft }) => {
     </AnimatePresence>
   );
 };
-// --- End NftDetailModal Component ---
-
 
 function LiveSell() {
-  const { program, provider, umi, connection, connected, publicKey } = useSolanaProgram();
-  const { wallet } = useWallet();
-
+  const { program , provider , umi , connection , connected , publicKey} = useSolanaProgram();
+  
   const [listedNfts, setListedNfts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [successfulTxNftName, setSuccessfulTxNftName] = useState("");
   const [isDelistAnimation, setIsDelistAnimation] = useState(false);
+  const { wallet } = useWallet();
+
 
   const [selectedNft, setSelectedNft] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Helper function for IPFS URL transformation
-  const transformIpfsUrl = useCallback((url) => {
-    if (!url) return null;
-    if (url.startsWith('https://gateway.pinata.cloud/ipfs/')) {
-        const cidPath = url.substring('https://gateway.pinata.cloud/ipfs/'.length);
-        return `https://cloudflare-ipfs.com/ipfs/${cidPath}`;
-    }
-    if (url.startsWith('ipfs://')) {
-        const cid = url.substring('ipfs://'.length);
-        return `https://cloudflare-ipfs.com/ipfs/${cid}`;
-    }
-    return url;
-  }, []);
-
-  // Function to fetch active sales from the program
-  const fetchActiveSales = useCallback(async () => {
-    if (!program || !umi || !connection) return [];
-    setLoading(true);
-    toast.loading("Fetching live listings from blockchain...", { id: "fetch-listings" });
-    try {
-      // Fetch all listing accounts
-      const allListingAccounts = await program.account.listing.all();
-
-      const activeSalesPromises = allListingAccounts.map(async (account) => {
-        const mintAddress = account.account.mint.toBase58();
-        const seller = account.account.seller.toBase58();
-        const price = account.account.price.toNumber() / anchor.web3.LAMPORTS_PER_SOL;
-
-        // Fetch metadata for the listed NFT using Umi
-        const umiMint = new PublicKey(mintAddress);
-        const asset = await fetchDigitalAsset(umi, umiMint);
-
-        let imageUrl = null;
-        let description = asset.metadata.description || 'No description available.';
-
-        if (asset.metadata.uri) {
-          try {
-            const metadataUriToFetch = transformIpfsUrl(asset.metadata.uri);
-            const metadataResponse = await fetch(metadataUriToFetch);
-            if (metadataResponse.ok) {
-              const fetchedMetadata = await metadataResponse.json();
-              if (fetchedMetadata.image) {
-                imageUrl = transformIpfsUrl(fetchedMetadata.image);
-              }
-              if (fetchedMetadata.description) {
-                description = fetchedMetadata.description;
-              }
-            }
-          } catch (metadataErr) {
-            console.error(`Error fetching/parsing metadata for listed NFT ${mintAddress}:`, metadataErr);
-          }
-        } else if (asset.content && asset.content.files && asset.content.files.length > 0) {
-            const imageFile = asset.content.files.find(file => file.mime && file.mime.startsWith('image/'));
-            if (imageFile) {
-                imageUrl = transformIpfsUrl(imageFile.uri);
-            }
-        }
-
-        // Extract creators for royalty calculation if available in metadata
-        const creators = (asset.metadata.creators || []).map(creator => ({
-            address: toWeb3JsPublicKey(creator.address).toBase58(),
-            share: creator.share,
-            verified: creator.verified,
-        }));
-        const sellerFeeBasisPoints = asset.metadata.sellerFeeBasisPoints;
-
-        return {
-          mintAddress,
-          name: asset.metadata.name,
-          symbol: asset.metadata.symbol,
-          image: imageUrl,
-          description,
-          seller,
-          sellPrice: price,
-          creators, // Pass creators and sellerFeeBasisPoints
-          sellerFeeBasisPoints,
-        };
-      });
-      const fetchedNfts = (await Promise.all(activeSalesPromises)).filter(Boolean);
-      setListedNfts(fetchedNfts);
-      toast.success(`Successfully loaded ${fetchedNfts.length} live listings.`, { id: "fetch-listings" });
-      return fetchedNfts;
-    } catch (err) {
-      console.error("Error fetching active sales from program:", err);
-      toast.error("Failed to load active sales from the blockchain. Please refresh.", { id: "fetch-listings" });
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [program, umi, connection, transformIpfsUrl]);
-
-  // Initial fetch on component mount
   useEffect(() => {
-    fetchActiveSales();
-  }, [fetchActiveSales]);
+    const storedListedNfts = localStorage.getItem("listedNftsForSale");
+    if (storedListedNfts) {
+      try {
+        setListedNfts(JSON.parse(storedListedNfts));
+      } catch (e) {
+        console.error("Failed to parse listed NFTs from localStorage", e);
+        setListedNfts([]);
+      }
+    }
+    setLoading(false);
+  }, []);
 
   // NEW: useEffect to automatically dismiss the animation after a set time
   useEffect(() => {
     let timer;
     if (showSuccessAnimation) {
+      // Set a timer to hide the animation after 3 seconds (adjust as needed)
       timer = setTimeout(() => {
         setShowSuccessAnimation(false);
-        setSuccessfulTxNftName(""); // Clear name after animation
-        setIsDelistAnimation(false); // Reset animation type
-      }, 2500);
+        console.log("Animation timer triggered: setShowSuccessAnimation(false)");
+      }, 2500); // Display for 3 seconds
     }
     return () => {
+      // Cleanup the timer if the component unmounts or state changes
       if (timer) {
         clearTimeout(timer);
       }
     };
-  }, [showSuccessAnimation]);
+  }, [showSuccessAnimation]); // Re-run this effect when showSuccessAnimation changes
 
-  const handleDelist = useCallback(async (nftToDelist) => {
-    if (!connected || !publicKey || !program || !provider) {
-      toast.error("Wallet not connected or program not initialized.");
+  const handleDelist = async (nftToDelist) => {
+    if (!connected || !publicKey) {
+      toast.error("Wallet not connected to delist NFT.");
       return;
     }
 
@@ -354,99 +276,102 @@ function LiveSell() {
       return;
     }
 
-    toast.loading(`Delisting ${nftToDelist.name}...`, { id: "delist-nft" });
+    toast.loading("Delisting NFT...", { id: "delist-nft" });
 
     try {
       const mintPublicKey = new PublicKey(nftToDelist.mintAddress);
 
-      // Derive the PDA for the listing account
-      const [listingPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("listing"), mintPublicKey.toBuffer()],
-        program.programId
-      );
+      // const [listingPda] = PublicKey.findProgramAddressSync(
+      //   [Buffer.from("listing"), mintPublicKey.toBuffer()],
+      //   program.programId
+      // );
 
-      // Derive the Associated Token Account for the listing PDA (escrow ATA)
-      const escrowAta = await getAssociatedTokenAddress(
-        mintPublicKey,
-        listingPda, // Owner is the PDA itself
-        true // allow owner off curve
-      );
+      // const escrowAta = await getAssociatedTokenAddress(
+      //   mintPublicKey,
+      //   listingPda,
+      //   true
+      // );
 
       const sellerTokenAccount = await getAssociatedTokenAddress(
         mintPublicKey,
         publicKey
       );
 
-      const instruction = await program.methods
+      const cancelListing = await program.methods
         .cancelListing()
         .accounts({
           seller: publicKey,
           mint: mintPublicKey,
           sellerTokenAccount: sellerTokenAccount,
-          escrowAta: escrowAta,
-          listingAccount: listingPda, // The listing account PDA
+          // escrowAta: escrowAta,
+          // listingPda: listingPda,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
-          rent: SYSVAR_RENT_PUBKEY, // Add rent sysvar
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         })
         .instruction();
 
-      const transaction = new Transaction();
-      transaction.add(instruction);
+      const tx = new Transaction();
+      tx.add(cancelListing);
 
-      const { blockhash, lastValidBlockHeight } = await provider.connection.getLatestBlockhash('finalized');
-      transaction.recentBlockhash = blockhash;
-      transaction.lastValidBlockHeight = lastValidBlockHeight;
-      transaction.feePayer = publicKey;
+      const confirmTx = await provider.sendAndConfirm(tx, []);
+      console.log("delist successfully :  ", confirmTx);
 
-      const signedTransaction = await wallet.adapter.signTransaction(transaction);
-      const txSign = await provider.connection.sendRawTransaction(signedTransaction.serialize());
-
-      await provider.connection.confirmTransaction({
-          signature: txSign,
-          blockhash: blockhash,
-          lastValidBlockHeight: lastValidBlockHeight,
-      }, "confirmed");
-
+      const updatedListedNfts = listedNfts.filter(
+        (nft) => nft.mintAddress !== nftToDelist.mintAddress
+      );
+      setListedNfts(updatedListedNfts);
+      localStorage.setItem(
+        "listedNftsForSale",
+        JSON.stringify(updatedListedNfts)
+      );
       toast.success("NFT delisted successfully!", { id: "delist-nft" });
 
       setSuccessfulTxNftName(nftToDelist.name);
       setIsDelistAnimation(true);
-      setShowSuccessAnimation(true);
-      
-      // Refresh the listed NFTs after successful delist
-      fetchActiveSales();
-
+      setShowSuccessAnimation(true); // Triggers the animation to appear
+      console.log("Delist animation triggered for:", nftToDelist.name);
     } catch (error) {
       console.error("Error delisting NFT:", error);
-      let errorMessage = `Failed to delist NFT. Error: ${error.message || "Unknown error"}`;
+      let errorMessage = `Failed to delist NFT. Error: ${
+        error.message || "Unknown error"
+      }`;
 
       if (error.logs) {
+        console.error("Transaction logs:", error.logs);
         const programLog = error.logs.find((log) =>
           log.includes("Program log: AnchorError")
         );
         if (programLog) {
           errorMessage = programLog.split("Error Message: ")[1] || errorMessage;
           if (errorMessage.includes("AccountNotInitialized")) {
-            errorMessage = "Delist failed: Listing not found on-chain. Did it fail to list initially or was it already delisted?";
+            errorMessage =
+              "Delist failed: Listing not found on-chain. Did it fail to list initially or was it already delisted?";
           }
+        } else {
+          errorMessage = `Delist failed: Simulation failed. Logs: ${error.logs.join(
+            "\n"
+          )}`;
         }
-      } else if (error.message.includes("User rejected the request")) {
-          errorMessage = "Transaction cancelled by user.";
+      } else {
+        toast.error("delist rejected")
       }
       toast.error(errorMessage, { id: "delist-nft", duration: 6000 });
     } finally {
-      toast.dismiss("delist-nft");
+      setTimeout(() => {
+        toast.dismiss("delist-nft");
+      }, 10000);
     }
-  }, [connected, publicKey, program, provider, wallet, fetchActiveSales]);
+  };
 
-  const handleBuy = useCallback(async (nft) => {
-    if (!connected || !publicKey || !program || !provider || !wallet?.adapter) {
-      toast.error("Wallet not connected or program not initialized.");
+  const handleBuy = async (nft) => {
+    if (!connected || !publicKey) {
+      toast.error("Please connect your wallet to buy this NFT.");
       return;
     }
     if (publicKey.toBase58() === nft.seller) {
       toast.error("You cannot buy your own NFT!");
+      console.log("You cannot buy your own NFTs.");
       return;
     }
 
@@ -454,25 +379,23 @@ function LiveSell() {
       id: "buy-nft",
     });
     try {
+
       const mintPublicKey = new PublicKey(nft.mintAddress);
       const sellerPublicKey = new PublicKey(nft.seller);
 
-      // Derive the PDA for the listing account
-      const [listingPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("listing"), mintPublicKey.toBuffer()],
-        program.programId
-      );
+      // const [listingPda] = PublicKey.findProgramAddressSync(
+      //   [Buffer.from("listing"), mintPublicKey.toBuffer()],
+      //   program.programId
+      // );
 
-      // Fetch the listing account to get the exact price from the chain
-      const listingAccount = await program.account.listing.fetch(listingPda);
-      const priceInLamports = listingAccount.price;
+      // const listingAccount = await program.account.listing.fetch(listingPda);
+      // const priceInLamports = listingAccount.price;
 
-      // Derive the Associated Token Account for the listing PDA (escrow ATA)
-      const escrowAta = await getAssociatedTokenAddress(
-        mintPublicKey,
-        listingPda,
-        true // allow owner off curve
-      );
+      // const escrowAta = await getAssociatedTokenAddress(
+      //   mintPublicKey,
+      //   listingPda,
+      //   true
+      // );
 
       const buyerTokenAccount = await getAssociatedTokenAddress(
         mintPublicKey,
@@ -480,70 +403,122 @@ function LiveSell() {
       );
 
       let remainingAccounts = [];
+      let totalRoyaltyLamports = new anchor.BN(0);
+      let totalBasisPoints = 0;
 
-      // Add royalty recipients to remainingAccounts
-      if (nft.creators && nft.creators.length > 0 && nft.sellerFeeBasisPoints > 0) {
-        const totalRoyaltyLamports = priceInLamports
-          .mul(new anchor.BN(nft.sellerFeeBasisPoints))
-          .div(new anchor.BN(10000)); // sellerFeeBasisPoints is in 1/100ths of a % (e.g., 500 = 5%)
+      // const [metadataPda] = PublicKey.findProgramAddressSync(
+      //   [
+      //     Buffer.from("metadata"),
+      //     METADATA_PROGRAM_ID.toBuffer(),
+      //     mintPublicKey.toBuffer(),
+      //   ],
+      //   METADATA_PROGRAM_ID
+      // );
 
-        nft.creators.forEach((creator) => {
-          if (creator.share > 0 && creator.address !== sellerPublicKey.toBase58()) { // Ensure seller doesn't get royalty twice if they're also a creator
-            const creatorRoyaltyLamports = totalRoyaltyLamports
-              .mul(new anchor.BN(creator.share))
-              .div(new anchor.BN(100)); // creator.share is out of 100
+      try {
+        const response = await fetchDigitalAsset(umi , mintPublicKey);
+        console.log("creators : ", response.metadata.creators);
+        if (response) {
+          
+          if (response.metadata.creators && response.metadata.creators > 0) {
+            totalBasisPoints = response.metadata.sellerFeeBasisPoints;
+            console.log("total basis points : ",totalBasisPoints);
 
-            if (creatorRoyaltyLamports.gt(new anchor.BN(0))) {
-              remainingAccounts.push({
-                pubkey: new PublicKey(creator.address),
-                isWritable: true, // Creators receive SOL, so their accounts must be writable
-                isSigner: false,
+            if (totalBasisPoints > 0) {
+              const royaltyFraction = totalBasisPoints / 10000;
+              totalRoyaltyLamports = priceInLamports
+                .mul(new anchor.BN(Math.round(royaltyFraction * 10000)))
+                .div(new anchor.BN(10000));
+
+              response.metadata.creators.forEach((creator) => {
+                if (creator.share > 0) {
+                  const creatorRoyaltyLamports = totalRoyaltyLamports
+                    .mul(new anchor.BN(creator.share))
+                    .div(new anchor.BN(100));
+                  if (creatorRoyaltyLamports.gt(new anchor.BN(0))) {
+                    remainingAccounts.push({
+                      pubkey: new PublicKey(creator.address),
+                      isWritable: true,
+                      isSigner: false,
+                    });
+                  }
+                }
               });
             }
           }
-        });
+        }
+      } catch (metadataError) {
+        console.warn(
+          "Could not fetch NFT metadata or creators. Skipping royalty calculation.",
+          metadataError
+        );
       }
 
       const transaction = new Transaction();
 
-      // Check if buyer's ATA for this NFT already exists, if not, create instruction
       const buyerAtaInfo = await connection.getAccountInfo(buyerTokenAccount);
       if (!buyerAtaInfo) {
         const createBuyerAtaInstruction =
           createAssociatedTokenAccountInstruction(
-            publicKey, // Payer
-            buyerTokenAccount, // ATA address
-            publicKey, // Owner of the ATA
-            mintPublicKey, // Mint of the token
+            publicKey,
+            buyerTokenAccount,
+            publicKey,
+            mintPublicKey,
             TOKEN_PROGRAM_ID,
             ASSOCIATED_TOKEN_PROGRAM_ID
           );
         transaction.add(createBuyerAtaInstruction);
       }
 
-      const buyNftInstruction = await program.methods
+      if (totalBasisPoints > 0) {
+        let currentBuyerSolBalance = await connection.getBalance(publicKey);
+        let totalAmountToSend = priceInLamports.toNumber();
+
+        metadata.data.creators.forEach((creator) => {
+          if (creator.share > 0) {
+            const creatorRoyaltyLamports = totalRoyaltyLamports
+              .mul(new anchor.BN(creator.share))
+              .div(new anchor.BN(100));
+            if (creatorRoyaltyLamports.gt(new anchor.BN(0))) {
+              totalAmountToSend += creatorRoyaltyLamports.toNumber();
+              if (currentBuyerSolBalance < totalAmountToSend) {
+                throw new Error(
+                  `Insufficient SOL balance to cover royalties and purchase. Required: ${
+                    totalAmountToSend / anchor.web3.LAMPORTS_PER_SOL
+                  } SOL.`
+                );
+              }
+              transaction.add(
+                SystemProgram.transfer({
+                  fromPubkey: publicKey,
+                  toPubkey: new PublicKey(creator.address),
+                  lamports: creatorRoyaltyLamports.toNumber(),
+                })
+              );
+            }
+          }
+        });
+      }
+
+      const buyNft = await program.methods
         .buyNft()
         .accounts({
           buyer: publicKey,
           seller: sellerPublicKey,
           mint: mintPublicKey,
           buyerTokenAccount: buyerTokenAccount,
-          escrowAta: escrowAta, // Escrow ATA where NFT is held
-          listingAccount: listingPda, // The listing account PDA
           tokenProgram: TOKEN_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
-          rent: SYSVAR_RENT_PUBKEY, // Add rent sysvar
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         })
-        .remainingAccounts(remainingAccounts) // Add royalty recipients here
+        .remainingAccounts(remainingAccounts)
         .instruction();
 
-      transaction.add(buyNftInstruction);
+      transaction.add(buyNft);
 
       const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash('finalized');
+        await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
-      transaction.lastValidBlockHeight = lastValidBlockHeight;
       transaction.feePayer = publicKey;
 
       const signedTransaction = await wallet.adapter.signTransaction(
@@ -573,36 +548,77 @@ function LiveSell() {
         );
       }
 
+      const updatedListedNfts = listedNfts.filter(
+        (item) => item.mintAddress !== nft.mintAddress
+      );
+      setListedNfts(updatedListedNfts);
+      localStorage.setItem(
+        "listedNftsForSale",
+        JSON.stringify(updatedListedNfts)
+      );
       toast.success(`Successfully bought ${nft.name}!`, { id: "buy-nft" });
 
       setSuccessfulTxNftName(nft.name);
       setIsDelistAnimation(false);
-      setShowSuccessAnimation(true);
-
-      // Refresh the listed NFTs after successful purchase
-      fetchActiveSales();
-
+      setShowSuccessAnimation(true); // Triggers the animation to appear
+      console.log("Buy animation triggered for:", nft.name);
     } catch (error) {
       console.error("Error buying NFT:", error);
-      let errorMessage = `Failed to buy NFT. Error: ${error.message || "Unknown error"}`;
+      let errorMessage = `Failed to buy NFT. Error: ${
+        error.message || "Unknown error"
+      }`;
       if (error.logs) {
+        console.error("Transaction logs:", error.logs);
         const programLog = error.logs.find((log) =>
           log.includes("Program log: AnchorError")
         );
         if (programLog) {
           errorMessage = programLog.split("Error Message: ")[1] || errorMessage;
-          if (errorMessage.includes("AccountNotInitialized") || errorMessage.includes("AccountNotMutable")) {
-            errorMessage = "Action failed: NFT listing might not exist or state is incorrect. Try refreshing.";
+          if (
+            errorMessage.includes("AccountNotInitialized") ||
+            errorMessage.includes("AccountNotMutable")
+          ) {
+            errorMessage =
+              "Action failed: NFT listing might not exist or state is incorrect. Try refreshing.";
           }
+        } else {
+          errorMessage = `Action failed: Simulation failed. Logs: ${error.logs.join(
+            "\n"
+          )}`;
         }
-      } else if (error.message.includes("User rejected the request")) {
-          errorMessage = "Transaction cancelled by user.";
+      } else {
+        toast.error("buy request rejected!!")
       }
       toast.error(errorMessage, { id: "buy-nft", duration: 6000 });
     } finally {
-      toast.dismiss("buy-nft");
+      setTimeout(() => {
+        toast.dismiss("delist-nft");
+      }, 10000);
     }
-  }, [connected, publicKey, program, provider, wallet, connection, fetchActiveSales]);
+  };
+
+  // The onAnimationComplete only resets specific state, not the trigger to hide.
+  // It ensures the internal elements have finished their exit animations.
+  const handleAnimationComplete = (definition) => {
+    // We actually only need this if we want to do something *after* the exit animation
+    // has completed, but before the component is fully unmounted by AnimatePresence.
+    // In this case, our useEffect handles the primary dismissal.
+    // This function can be simplified or even removed if not needed for other cleanup.
+    if (definition === "exit") {
+      // Potentially useful for final cleanup after the exit visual completes
+      // e.g., setSuccessfulTxNftName('') if not already handled by useEffect.
+      // But the main setShowSuccessAnimation(false) comes from the useEffect timer.
+      console.log("Animation exit phase complete.");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex justify-center items-center">
+        <p>Loading listed NFTs...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-8 custom-scrollbar-hidden">
@@ -616,17 +632,7 @@ function LiveSell() {
       </motion.h1>
 
       <AnimatePresence>
-        {loading ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]"
-          >
-            <div className="w-16 h-16 border-4 border-t-4 border-gray-200 border-t-purple-500 rounded-full animate-spin"></div>
-            <p className='text-lg text-gray-400 mt-6 animate-pulse'>Fetching live listings...</p>
-          </motion.div>
-        ) : listedNfts.length > 0 ? (
+        {listedNfts.length > 0 ? (
           <motion.div
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-8"
             variants={containerVariants}
@@ -650,10 +656,10 @@ function LiveSell() {
                   <img
                     src={nft.image}
                     alt={nft.name}
-                    className="w-full h-48 object-cover rounded-t-lg"
+                    className="w-full h-48 object-cover"
                   />
                 ) : (
-                  <div className="w-full h-48 bg-gray-700 rounded-t-lg flex items-center justify-center text-gray-400">
+                  <div className="w-full h-48 bg-gray-700 flex items-center justify-center text-gray-400">
                     No Image
                   </div>
                 )}
@@ -676,8 +682,8 @@ function LiveSell() {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={(e) => { e.stopPropagation(); handleDelist(nft); }} // Stop propagation to prevent modal from opening
-                      className="mt-4 w-full bg-gradient-to-r from-red-500 to-rose-700 hover:from-red-600 hover:to-rose-800 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
+                      onClick={() => handleDelist(nft)}
+                      className="mt-4 w-full bg-gradient-to-r from-red-500 to-purple-900 hover:from-purple-900 hover:to-pink-600 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
                     >
                       Delist
                     </motion.button>
@@ -685,7 +691,7 @@ function LiveSell() {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={(e) => { e.stopPropagation(); handleBuy(nft); }} // Stop propagation
+                      onClick={() => handleBuy(nft)}
                       className="mt-4 w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-2 rounded-md transition-all duration-200 text-base shadow-md hover:shadow-lg"
                     >
                       Buy Now
@@ -715,13 +721,13 @@ function LiveSell() {
           </motion.div>
         )}
       </AnimatePresence>
-      <NftDetailModal
+      {/* <NftDetailModal
         nft={selectedNft}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-      />
+      /> */}
 
-      {/* Full-Screen Success/Delist Animation */}
+      {/* Full-Screen Success/Delist Animation - MOVED OUTSIDE CONDITIONAL RENDERING */}
       <AnimatePresence>
         {showSuccessAnimation && (
           <motion.div
@@ -731,7 +737,7 @@ function LiveSell() {
             initial="hidden"
             animate="visible"
             exit="exit"
-            // onAnimationComplete will handle the dismissal logic, but the useEffect timer is safer
+            onAnimationComplete={handleAnimationComplete} // This will be called when 'visible' and 'exit' animations complete
           >
             <motion.div className="text-center">
               <motion.p
