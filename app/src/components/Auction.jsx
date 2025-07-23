@@ -73,14 +73,14 @@ const textVariants = {
 };
 
 function Auction() {
-  const { program  , connection , connected , publicKey} = useSolanaProgram();
+  const { program, connection, connected, publicKey } = useSolanaProgram();
   const [listedNftsForAuction, setListedNftsForAuction] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentBids, setCurrentBids] = useState({});
   const [showFullScreenSuccess, setShowFullScreenSuccess] = useState(false);
   const [successfulBidNftName, setSuccessfulBidNftName] = useState("");
   const { wallet } = useWallet();
-  
+
   // State for Bid Modal Management
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
   const [selectedNftForBid, setSelectedNftForBid] = useState(null);
@@ -116,7 +116,7 @@ function Auction() {
     fetchOnChainTime(); // Fetch immediately on mount
 
     // Set up interval to fetch every 10 seconds for dynamic updates
-    const intervalId = setInterval(fetchOnChainTime, 1000); 
+    const intervalId = setInterval(fetchOnChainTime, 1000);
 
     return () => clearInterval(intervalId); // Cleanup interval on component unmount
   }, [connection]);
@@ -143,7 +143,7 @@ function Auction() {
     }
     setLoading(false);
   }, []);
-  
+
   const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
   const fetchAllCurrentBids = useCallback(
@@ -909,7 +909,7 @@ function Auction() {
                     </p>
                     <p className="text-lg font-semibold text-gray-300">
                       Initial Price:{" "}
-                      <span className="font-bold text-gray-500">
+                      <span className="font-bold text-gray-400">
                         {nft.initialPrice} SOL
                       </span>
                     </p>
@@ -1006,50 +1006,50 @@ function Auction() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-              > 
+              >
                   <motion.div
                       className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-2xl border border-purple-600 text-white relative overflow-hidden" // Increased padding, stronger shadow, border
                       initial={{ scale: 0.9, y: 50 }}
                       animate={{ scale: 1, y: 0 }}
                       exit={{ scale: 0.9, y: 50 }}
                       transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                  > 
+                  >
                     {/* Decorative background element */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-purple-500 rounded-full opacity-20 blur-xl"></div>
                     <div className="absolute bottom-0 right-0 w-32 h-32 bg-blue-500 rounded-full opacity-15 blur-xl"></div>
 
                       <h2 className="text-4xl font-extrabold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 relative z-10"> {/* Larger heading */}
                           Place Your Bid
-                      </h2> 
+                      </h2>
 
                       <div className="flex flex-col items-center mb-6 relative z-10">
                           {selectedNftForBid.image ? (
                               <div className="w-36 h-36 rounded-xl overflow-hidden border-2 border-purple-500 shadow-lg"> {/* Slightly larger image, border */}
-                                <img 
+                                <img
                                     src={selectedNftForBid.image}
                                     alt={selectedNftForBid.name}
                                     className="w-full h-full object-cover"
                                 />
                               </div>
                           ) : (
-                              <div className="w-36 h-36 bg-gray-700 rounded-xl mb-4 flex items-center justify-center text-gray-400 text-lg border-2 border-purple-500 shadow-lg"> 
-                                  No Image 
-                              </div> 
-                          )} 
+                              <div className="w-36 h-36 bg-gray-700 rounded-xl mb-4 flex items-center justify-center text-gray-400 text-lg border-2 border-purple-500 shadow-lg">
+                                  No Image
+                              </div>
+                          )}
                           <h3 className="text-2xl font-semibold mt-4 mb-1 text-teal-300 text-center">{selectedNftForBid.name}</h3> {/* More prominent name */}
-                          <p className="text-gray-400 text-sm">{selectedNftForBid.symbol}</p> 
-                      </div> 
+                          <p className="text-gray-400 text-sm">{selectedNftForBid.symbol}</p>
+                      </div>
 
                       <div className="mb-6 pb-6 border-b border-gray-700/50 relative z-10"> {/* Added border-b */}
-                          <p className="text-lg text-gray-300 mb-2"> 
-                              Initial Price: <span className="font-bold text-gray-400">{selectedNftForBid.initialPrice} SOL</span> 
-                          </p> 
-                          <p className="text-xl font-semibold text-blue-300 mb-2"> 
+                          <p className="text-lg text-gray-300 mb-2">
+                              Initial Price: <span className="font-bold text-gray-400">{selectedNftForBid.initialPrice} SOL</span>
+                          </p>
+                          <p className="text-xl font-semibold text-blue-300 mb-2">
                               Current Highest Bid: <span className="font-bold text-blue-200">{currentHighestBidSol.toFixed(9)} SOL</span>
-                          </p> 
-                          <p className="text-lg text-yellow-300 mt-2"> 
+                          </p>
+                          <p className="text-lg text-yellow-300 mt-2">
                               Minimum Bid Required: <span className="font-bold text-yellow-200">{minimumBidRequiredSol.toFixed(9)} SOL</span>
-                          </p> 
+                          </p>
                           {/* Auction Ends In Time */}
                           <p className="text-md text-purple-300 mt-4">
                               Auction Ends In: {" "}
@@ -1057,12 +1057,12 @@ function Auction() {
                                   {formatTimeLeft(selectedNftForBid.startTime + selectedNftForBid.duration - localDisplayTime)}
                               </span>
                           </p>
-                      </div> 
+                      </div>
 
                       <div className="mb-8 relative z-10"> {/* Increased margin-bottom */}
                           <label htmlFor="bidAmount" className="block text-gray-300 text-sm font-bold mb-2">
-                              Your Bid (SOL) 
-                          </label> 
+                              Your Bid (SOL)
+                          </label>
                           <input
                               type="number"
                               id="bidAmount"
@@ -1072,31 +1072,31 @@ function Auction() {
                               step="0.000001" // Changed step for slightly larger increments, still allows fine-tuning
                               min={minimumBidRequiredSol}
                               className="shadow appearance-none border border-gray-700 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-700 focus:border-transparent transition-all duration-200" // Rounded corners for input
-                          /> 
-                      </div> 
+                          />
+                      </div>
 
-                      <div className="flex justify-end gap-4 relative z-10"> 
+                      <div className="flex justify-end gap-4 relative z-10">
                           <button
                               onClick={() => {
                                   setIsBidModalOpen(false);
                                   setBidAmountInput("");
                                   setSelectedNftForBid(null);
-                              }} 
+                              }}
                               className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-md transition-colors duration-200 text-lg" // Increased padding, text size
-                          > 
-                              Cancel 
-                          </button> 
-                          <button 
-                              onClick={confirmPlaceBid} 
+                          >
+                              Cancel
+                          </button>
+                          <button
+                              onClick={confirmPlaceBid}
                               disabled={!bidAmountInput || parseFloat(bidAmountInput) < minimumBidRequiredSol}
                               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-2 px-6 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-lg" // Increased padding, text size
-                          > 
-                              Confirm Bid 
-                          </button> 
-                      </div> 
-                  </motion.div> 
-              </motion.div> 
-          )} 
+                          >
+                              Confirm Bid
+                          </button>
+                      </div>
+                  </motion.div>
+              </motion.div>
+          )}
       </AnimatePresence>
 
       <style jsx>{`
